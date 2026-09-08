@@ -31,6 +31,8 @@ CREATE TABLE IF NOT EXISTS messages (
 
 CREATE INDEX IF NOT EXISTS messages_by_room ON messages (room_id, seq);
 
+CREATE INDEX IF NOT EXISTS messages_by_participant ON messages (participant_id);
+
 CREATE TABLE IF NOT EXISTS blobs (
   id TEXT PRIMARY KEY,
   mime TEXT NOT NULL,

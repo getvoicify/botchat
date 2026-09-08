@@ -68,6 +68,13 @@ const MESSAGE_COLUMNS =
   "m.seq, m.room_id, p.name AS author, m.kind, m.body, m.lang, m.created_at " +
   "FROM messages m JOIN participants p ON p.id = m.participant_id";
 
+// LEFT JOIN so a participant who has said nothing still appears; a bot that
+// has just joined must show up in the digest it is handed.
+export const PARTICIPANT_MESSAGE_COUNTS_SQL =
+  "SELECT p.name, p.kind, COUNT(m.seq) AS messages " +
+  "FROM participants p LEFT JOIN messages m ON m.participant_id = p.id " +
+  "WHERE p.room_id = $roomId GROUP BY p.id ORDER BY messages DESC, p.joined_at ASC";
+
 const toRoom = (row: RoomRow): Room => ({
   id: row.id,
   name: row.name,
@@ -152,13 +159,7 @@ export class Store {
       `SELECT ${MESSAGE_COLUMNS} WHERE m.room_id = $roomId AND m.seq < $before ORDER BY m.seq DESC LIMIT $limit`,
     );
     this.#countMessages = db.prepare("SELECT COUNT(*) AS n FROM messages WHERE room_id = $roomId");
-    // LEFT JOIN so a participant who has said nothing still appears; a bot that
-    // has just joined must show up in the digest it is handed.
-    this.#participantMessageCounts = db.prepare(
-      "SELECT p.name, p.kind, COUNT(m.seq) AS messages " +
-        "FROM participants p LEFT JOIN messages m ON m.participant_id = p.id " +
-        "WHERE p.room_id = $roomId GROUP BY p.id ORDER BY messages DESC, p.joined_at ASC",
-    );
+    this.#participantMessageCounts = db.prepare(PARTICIPANT_MESSAGE_COUNTS_SQL);
     this.#codeLanguages = db.prepare(
       "SELECT DISTINCT lang FROM messages " +
         "WHERE room_id = $roomId AND kind = 'code' AND lang IS NOT NULL ORDER BY lang",

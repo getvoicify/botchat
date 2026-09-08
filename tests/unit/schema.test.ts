@@ -2,6 +2,7 @@ import { test, expect } from "bun:test";
 import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { openDatabase, SCHEMA_SQL } from "../../src/db/schema.ts";
+import { PARTICIPANT_MESSAGE_COUNTS_SQL } from "../../src/db/store.ts";
 
 function seed(db: ReturnType<typeof openDatabase>) {
   db.run("INSERT INTO rooms (id, name, topic, created_at) VALUES ('r1', 'design', null, 1)");
@@ -129,6 +130,28 @@ test("refuses to delete an attachment that has already been written", () => {
     "INSERT INTO message_attachments (message_seq, blob_id, filename) VALUES (1, 'b1', 'a.png')",
   );
   expect(() => db.run("DELETE FROM message_attachments")).toThrow(/append-only/);
+});
+
+test("counts a participant's messages through an index instead of reading every message", () => {
+  const db = openDatabase(":memory:");
+  seed(db);
+  db.run(
+    "INSERT INTO participants (id, room_id, name, kind, joined_at) VALUES ('p2', 'r1', 'ada', 'bot', 2)",
+  );
+  for (let i = 0; i < 50; i += 1) {
+    db.run(
+      "INSERT INTO messages (room_id, participant_id, kind, body, lang, created_at) VALUES ('r1', 'p2', 'text', 'beep', null, 2)",
+    );
+  }
+
+  const steps = (
+    db.query(`EXPLAIN QUERY PLAN ${PARTICIPANT_MESSAGE_COUNTS_SQL}`).all({ $roomId: "r1" }) as {
+      detail: string;
+    }[]
+  ).map((step) => step.detail);
+
+  expect(steps.some((step) => /SEARCH m USING (COVERING )?INDEX/.test(step))).toBe(true);
+  expect(steps.some((step) => /\bSCAN m\b/.test(step))).toBe(false);
 });
 
 test("creates the directory the database was asked to live in", () => {
