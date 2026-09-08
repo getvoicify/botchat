@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { postJson } from "./api.ts";
+import { parseDraft } from "./draft.ts";
 
 type Attachment = { blobId: string; filename: string; mime: string; size: number };
 
@@ -100,12 +101,18 @@ export function Room({ roomId }: { roomId: string }) {
 
   async function send(event: React.FormEvent) {
     event.preventDefault();
-    const body = draft;
+    const { kind, body, lang } = parseDraft(draft);
     if (!body.trim()) return;
     const attachments = pending.map(({ blobId, filename }) => ({ blobId, filename }));
     setDraft("");
     setPending([]);
-    await postJson(`/api/rooms/${roomId}/messages`, { author: me.current, body, attachments });
+    await postJson(`/api/rooms/${roomId}/messages`, {
+      author: me.current,
+      body,
+      kind,
+      lang,
+      attachments,
+    });
   }
 
   return (
@@ -117,6 +124,11 @@ export function Room({ roomId }: { roomId: string }) {
         {messages.map((message) => (
           <li key={message.seq} className={`message message-${message.kind}`}>
             <span className="author">{message.author}</span>
+            {message.lang ? (
+              <span className="lang" data-testid="lang">
+                {message.lang}
+              </span>
+            ) : null}
             {message.kind === "code" ? (
               <pre>
                 <code>{message.body}</code>
@@ -157,10 +169,16 @@ export function Room({ roomId }: { roomId: string }) {
       ) : null}
       <form className="composer" onSubmit={send}>
         <label htmlFor="message">Message</label>
-        <input
+        <textarea
           id="message"
           value={draft}
+          rows={Math.min(12, draft.split("\n").length)}
           onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter" || e.shiftKey) return;
+            e.preventDefault();
+            e.currentTarget.form?.requestSubmit();
+          }}
           placeholder={`Message as ${me.current}`}
         />
         <label htmlFor="attachment">Attach a file</label>

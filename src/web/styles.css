@@ -4,7 +4,8 @@
 body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 ui-sans-serif, system-ui, sans-serif; }
 .shell { max-width: 44rem; margin: 0 auto; padding: 2rem 1.25rem; }
 h1 { font-size: 1.4rem; letter-spacing: -0.01em; }
-.composer { display: flex; gap: 0.5rem; align-items: center; margin: 1.5rem 0; }
+.composer { display: flex; gap: 0.5rem; align-items: flex-end; margin: 1.5rem 0; }
+.composer textarea { resize: none; overflow-y: auto; line-height: 1.45; }
 /* Hidden visually, not removed: getByLabel resolves the accessible name, which a placeholder does not provide. */
 .composer label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 input, textarea { flex: 1; padding: 0.55rem 0.7rem; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: inherit; font: inherit; }
@@ -20,6 +21,7 @@ button { padding: 0.55rem 0.9rem; border: 0; border-radius: 8px; background: var
 .message p { margin: 0.15rem 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .message-system { opacity: 0.7; font-style: italic; }
 .author { font-size: 0.8rem; font-weight: 600; opacity: 0.75; }
+.lang { margin-left: 0.4rem; padding: 0.05rem 0.35rem; border: 1px solid var(--line); border-radius: 999px; font-size: 0.7rem; opacity: 0.7; }
 .reconnecting { margin: 0.75rem 0 0; font-size: 0.85rem; opacity: 0.7; }
 pre { margin: 0.35rem 0 0; }
 pre code { display: block; padding: 0.6rem 0.7rem; border-radius: 8px; background: color-mix(in srgb, var(--fg) 8%, transparent); font: 13px/1.5 ui-monospace, SFMono-Regular, monospace; overflow-x: auto; }
