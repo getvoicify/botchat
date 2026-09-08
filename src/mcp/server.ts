@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
+import type { BlobStore } from "../core/blobs.ts";
 import type { EventBus } from "../core/bus.ts";
 import type { Message, MessageService } from "../core/messages.ts";
 import type { RoomService } from "../core/rooms.ts";
@@ -8,13 +9,20 @@ import { digest } from "../core/summary.ts";
 import type { Store } from "../db/store.ts";
 
 const AWAIT_CAP_MS = 25_000;
+const INLINE_TEXT_CAP = 256 * 1024;
 
 const text = (body: string) => ({ content: [{ type: "text" as const, text: body }] });
 
+const isTextish = (mime: string) =>
+  mime.startsWith("text/") || /^application\/(json|xml|javascript|x-yaml)\b|\+(json|xml)\b/.test(mime);
+
+const renderAttachments = (m: Message) =>
+  m.attachments.map((a) => `\n  [file] ${a.filename} (${a.mime}, ${a.size} bytes) ${a.blobId}`).join("");
+
 const renderMessage = (m: Message) =>
-  m.kind === "code"
+  (m.kind === "code"
     ? `#${m.seq} ${m.author}:\n\`\`\`${m.lang ?? ""}\n${m.body}\n\`\`\``
-    : `#${m.seq} ${m.author}: ${m.body}`;
+    : `#${m.seq} ${m.author}: ${m.body}`) + renderAttachments(m);
 
 const renderPage = (messages: Message[]) =>
   messages.length === 0
@@ -26,8 +34,9 @@ export function createMcpHandler(deps: {
   rooms: RoomService;
   messages: MessageService;
   bus: EventBus;
+  blobs: BlobStore;
 }) {
-  const build = () => {
+  const build = (origin: string) => {
     const server = new McpServer({ name: "botchat", version: "1.0.0" });
 
     server.registerTool(
@@ -89,9 +98,13 @@ export function createMcpHandler(deps: {
           body: z.string(),
           kind: z.enum(["text", "code"]).optional(),
           lang: z.string().optional(),
+          attachments: z
+            .array(z.object({ blob_id: z.string(), filename: z.string() }))
+            .optional()
+            .describe("files already uploaded to POST /api/blobs"),
         },
       },
-      async ({ room_id, author, body, kind, lang }) => {
+      async ({ room_id, author, body, kind, lang, attachments }) => {
         const posted = deps.messages.post({
           roomId: room_id,
           author,
@@ -99,8 +112,42 @@ export function createMcpHandler(deps: {
           kind,
           lang,
           authorKind: "bot",
+          attachments: attachments?.map((a) => ({ blobId: a.blob_id, filename: a.filename })),
         });
         return text(`posted #${posted.seq}`);
+      },
+    );
+
+    server.registerTool(
+      "list_attachments",
+      {
+        description: "List every file shared in a room, with the blob id needed to read it.",
+        inputSchema: { room_id: z.string() },
+      },
+      async ({ room_id }) => {
+        deps.rooms.get(room_id);
+        const files = deps.store.attachmentManifest(room_id);
+        return text(
+          files
+            .map((f) => `${f.blobId}  ${f.filename}  (${f.mime}, ${f.size} bytes)  in #${f.messageSeq}`)
+            .join("\n") || "no files shared yet",
+        );
+      },
+    );
+
+    server.registerTool(
+      "read_attachment",
+      {
+        description:
+          "Read a file shared in a room. Returns its text when it is textual, otherwise a URL to fetch.",
+        inputSchema: { blob_id: z.string() },
+      },
+      async ({ blob_id }) => {
+        const { file, record } = await deps.blobs.open(blob_id);
+        const header = `${record.mime}, ${record.size} bytes`;
+        if (!isTextish(record.mime) || record.size > INLINE_TEXT_CAP)
+          return text(`${header}\nfetch it from ${origin}/api/blobs/${record.id}`);
+        return text(`${header}\n\n${await file.text()}`);
       },
     );
 
@@ -152,7 +199,7 @@ export function createMcpHandler(deps: {
   };
 
   return async (req: Request): Promise<Response> => {
-    const server = build();
+    const server = build(new URL(req.url).origin);
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true,

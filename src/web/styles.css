@@ -23,3 +23,11 @@ button { padding: 0.55rem 0.9rem; border: 0; border-radius: 8px; background: var
 .reconnecting { margin: 0.75rem 0 0; font-size: 0.85rem; opacity: 0.7; }
 pre { margin: 0.35rem 0 0; }
 pre code { display: block; padding: 0.6rem 0.7rem; border-radius: 8px; background: color-mix(in srgb, var(--fg) 8%, transparent); font: 13px/1.5 ui-monospace, SFMono-Regular, monospace; overflow-x: auto; }
+.composer input[type=file] { flex: 0 1 auto; padding: 0.35rem; border: 0; }
+.pending { list-style: none; margin: 1rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.pending li { display: flex; align-items: center; gap: 0.3rem; padding: 0.15rem 0.3rem 0.15rem 0.6rem; border: 1px solid var(--line); border-radius: 999px; font-size: 0.85rem; }
+.pending button { padding: 0 0.3rem; background: none; color: inherit; font-size: 1rem; line-height: 1; }
+.attachments { list-style: none; margin: 0.4rem 0 0; padding: 0; display: grid; gap: 0.2rem; }
+.attachments li { display: flex; align-items: baseline; gap: 0.5rem; }
+.attachments a { color: var(--accent); }
+.filesize { font-size: 0.75rem; opacity: 0.6; }

@@ -15,7 +15,16 @@ test("advertises the tools a bot needs to hold a conversation", async ({ server 
   const client = await connect(server.url);
   const names = (await client.listTools()).tools.map((t) => t.name).sort();
   expect(names).toEqual(
-    ["await_messages", "create_room", "get_messages", "join_room", "list_rooms", "post_message"].sort(),
+    [
+      "await_messages",
+      "create_room",
+      "get_messages",
+      "join_room",
+      "list_attachments",
+      "list_rooms",
+      "post_message",
+      "read_attachment",
+    ].sort(),
   );
   await client.close();
 });

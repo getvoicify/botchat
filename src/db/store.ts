@@ -28,13 +28,23 @@ export type ParticipantMessageCount = {
   messages: number;
 };
 
-export type AttachmentSummary = { filename: string; mime: string; size: number };
+export type AttachmentSummary = {
+  blobId: string;
+  messageSeq: number;
+  filename: string;
+  mime: string;
+  size: number;
+};
+
+export type Attachment = { blobId: string; filename: string; mime: string; size: number };
 
 export type BlobRecord = { id: string; mime: string; size: number; createdAt: number };
 
 type RoomRow = { id: string; name: string; topic: string | null; created_at: number };
 
 type BlobRow = { id: string; mime: string; size: number; created_at: number };
+
+type AttachmentRow = Attachment & { messageSeq: number };
 
 type ParticipantRow = {
   id: string;
@@ -108,6 +118,8 @@ export class Store {
   #attachmentManifest: Statement<AttachmentSummary>;
   #insertBlob: Statement;
   #findBlob: Statement<BlobRow>;
+  #insertAttachment: Statement;
+  #attachmentsForMessages: Statement<AttachmentRow>;
 
   constructor(db: Database) {
     this.db = db;
@@ -152,7 +164,8 @@ export class Store {
         "WHERE room_id = $roomId AND kind = 'code' AND lang IS NOT NULL ORDER BY lang",
     );
     this.#attachmentManifest = db.prepare(
-      "SELECT a.filename, b.mime, b.size FROM message_attachments a " +
+      "SELECT a.blob_id AS blobId, a.message_seq AS messageSeq, a.filename, b.mime, b.size " +
+        "FROM message_attachments a " +
         "JOIN messages m ON m.seq = a.message_seq JOIN blobs b ON b.id = a.blob_id " +
         "WHERE m.room_id = $roomId ORDER BY a.message_seq",
     );
@@ -160,6 +173,18 @@ export class Store {
       "INSERT INTO blobs (id, mime, size, created_at) VALUES ($id, $mime, $size, $createdAt)",
     );
     this.#findBlob = db.prepare("SELECT * FROM blobs WHERE id = $id");
+    this.#insertAttachment = db.prepare(
+      "INSERT INTO message_attachments (message_seq, blob_id, filename) " +
+        "VALUES ($messageSeq, $blobId, $filename)",
+    );
+    // json_each takes the whole page in one round trip while the statement stays
+    // prepared once, which an IN list of literals cannot do.
+    this.#attachmentsForMessages = db.prepare(
+      "SELECT a.message_seq AS messageSeq, a.blob_id AS blobId, a.filename, b.mime, b.size " +
+        "FROM message_attachments a JOIN blobs b ON b.id = a.blob_id " +
+        "WHERE a.message_seq IN (SELECT value FROM json_each($seqs)) " +
+        "ORDER BY a.message_seq, a.rowid",
+    );
   }
 
   insertRoom(room: Room): void {
@@ -262,5 +287,30 @@ export class Store {
   findBlob(id: string): BlobRecord | null {
     const row = this.#findBlob.get({ $id: id });
     return row ? toBlob(row) : null;
+  }
+
+  insertAttachment(messageSeq: number, blobId: string, filename: string): void {
+    this.#insertAttachment.run({
+      $messageSeq: messageSeq,
+      $blobId: blobId,
+      $filename: filename,
+    });
+  }
+
+  attachmentsForMessages(seqs: number[]): Map<number, Attachment[]> {
+    const grouped = new Map<number, Attachment[]>();
+    if (seqs.length === 0) return grouped;
+    for (const row of this.#attachmentsForMessages.all({ $seqs: JSON.stringify(seqs) })) {
+      const attachment: Attachment = {
+        blobId: row.blobId,
+        filename: row.filename,
+        mime: row.mime,
+        size: row.size,
+      };
+      const existing = grouped.get(row.messageSeq);
+      if (existing) existing.push(attachment);
+      else grouped.set(row.messageSeq, [attachment]);
+    }
+    return grouped;
   }
 }

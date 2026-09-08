@@ -14,7 +14,7 @@ const bus = new EventBus();
 const rooms = new RoomService(store);
 const messages = new MessageService(store, rooms, bus);
 const blobs = new BlobStore(store, process.env.BOTCHAT_BLOBS ?? "data/blobs");
-const mcp = createMcpHandler({ store, rooms, messages, bus });
+const mcp = createMcpHandler({ store, rooms, messages, bus, blobs });
 
 const server = Bun.serve({
   port: Number(process.env.PORT ?? 4000),

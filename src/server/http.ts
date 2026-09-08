@@ -84,6 +84,7 @@ export function roomRoutes(deps: {
               kind?: MessageKind;
               lang?: string | null;
               authorKind?: "human" | "bot";
+              attachments?: { blobId: string; filename: string }[];
             }>(req)),
           }),
           { status: 201 },

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { postJson } from "./api.ts";
 
+type Attachment = { blobId: string; filename: string; mime: string; size: number };
+
 type Message = {
   seq: number;
   author: string;
@@ -8,6 +10,7 @@ type Message = {
   body: string;
   lang: string | null;
   createdAt: number;
+  attachments: Attachment[];
 };
 
 function displayName(): string {
@@ -22,6 +25,7 @@ function displayName(): string {
 export function Room({ roomId }: { roomId: string }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
+  const [pending, setPending] = useState<Attachment[]>([]);
   const [connection, setConnection] = useState<"open" | "closed">("closed");
   const cursor = useRef(0);
   const me = useRef(displayName());
@@ -74,12 +78,34 @@ export function Room({ roomId }: { roomId: string }) {
     bottom.current?.scrollIntoView({ block: "end" });
   }, [messages.length]);
 
+  // Uploading on selection rather than on send keeps the transfer inside the
+  // time someone spends typing, so pressing Send stays instant for a large file.
+  async function attach(event: React.ChangeEvent<HTMLInputElement>) {
+    const chosen = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    for (const file of chosen) {
+      const res = await fetch("/api/blobs", {
+        method: "POST",
+        headers: { "content-type": file.type || "application/octet-stream" },
+        body: file,
+      });
+      if (!res.ok) continue;
+      const blob = (await res.json()) as { id: string; mime: string; size: number };
+      setPending((current) => [
+        ...current,
+        { blobId: blob.id, filename: file.name, mime: blob.mime, size: blob.size },
+      ]);
+    }
+  }
+
   async function send(event: React.FormEvent) {
     event.preventDefault();
     const body = draft;
     if (!body.trim()) return;
+    const attachments = pending.map(({ blobId, filename }) => ({ blobId, filename }));
     setDraft("");
-    await postJson(`/api/rooms/${roomId}/messages`, { author: me.current, body });
+    setPending([]);
+    await postJson(`/api/rooms/${roomId}/messages`, { author: me.current, body, attachments });
   }
 
   return (
@@ -98,11 +124,37 @@ export function Room({ roomId }: { roomId: string }) {
             ) : (
               <p>{message.body}</p>
             )}
+            {message.attachments.length > 0 ? (
+              <ul className="attachments">
+                {message.attachments.map((file) => (
+                  <li key={file.blobId}>
+                    <a href={`/api/blobs/${file.blobId}`}>{file.filename}</a>
+                    <span className="filesize">{file.size} bytes</span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </li>
         ))}
         <div ref={bottom} />
       </ol>
       {connection === "closed" ? <p className="reconnecting">Reconnecting…</p> : null}
+      {pending.length > 0 ? (
+        <ul className="pending" data-testid="pending-attachments">
+          {pending.map((file, index) => (
+            <li key={`${file.blobId}:${index}`}>
+              {file.filename}
+              <button
+                type="button"
+                aria-label={`Remove ${file.filename}`}
+                onClick={() => setPending((current) => current.filter((_, at) => at !== index))}
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       <form className="composer" onSubmit={send}>
         <label htmlFor="message">Message</label>
         <input
@@ -111,6 +163,8 @@ export function Room({ roomId }: { roomId: string }) {
           onChange={(e) => setDraft(e.target.value)}
           placeholder={`Message as ${me.current}`}
         />
+        <label htmlFor="attachment">Attach a file</label>
+        <input id="attachment" type="file" multiple onChange={attach} />
         <button type="submit">Send</button>
       </form>
     </main>
