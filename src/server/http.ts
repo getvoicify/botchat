@@ -32,7 +32,12 @@ export function roomRoutes(deps: { rooms: RoomService; messages: MessageService 
       ),
     },
     "/api/rooms/:id": {
-      GET: guard((req: BunRequest<"/api/rooms/:id">) => Response.json(deps.rooms.get(req.params.id))),
+      GET: guard((req: BunRequest<"/api/rooms/:id">) =>
+        Response.json({
+          ...deps.rooms.get(req.params.id),
+          participants: deps.rooms.participants(req.params.id),
+        }),
+      ),
     },
     "/api/rooms/:id/messages": {
       GET: guard((req: BunRequest<"/api/rooms/:id/messages">) => {

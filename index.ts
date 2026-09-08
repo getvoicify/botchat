@@ -4,6 +4,7 @@ import { MessageService } from "./src/core/messages.ts";
 import { RoomService } from "./src/core/rooms.ts";
 import { openDatabase } from "./src/db/schema.ts";
 import { Store } from "./src/db/store.ts";
+import { createMcpHandler } from "./src/mcp/server.ts";
 import { roomRoutes } from "./src/server/http.ts";
 import { createSocketHandlers } from "./src/server/ws.ts";
 
@@ -11,13 +12,18 @@ const store = new Store(openDatabase(process.env.BOTCHAT_DB ?? "botchat.db"));
 const bus = new EventBus();
 const rooms = new RoomService(store);
 const messages = new MessageService(store, rooms, bus);
+const mcp = createMcpHandler({ rooms, messages, bus });
 
 const server = Bun.serve({
   port: Number(process.env.PORT ?? 4000),
   development: process.env.BOTCHAT_DEV === "1",
+  // Long polls in await_messages outlive the 10s default and would log a
+  // timeout warning on every call.
+  idleTimeout: 30,
   routes: {
     "/": index,
     "/rooms/:id": index,
+    "/mcp": { GET: mcp, POST: mcp, DELETE: mcp },
     ...roomRoutes({ rooms, messages }),
   },
   fetch(req, server) {
