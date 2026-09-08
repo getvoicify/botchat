@@ -49,6 +49,9 @@ BEGIN SELECT RAISE(ABORT, 'messages are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS messages_no_delete BEFORE DELETE ON messages
 BEGIN SELECT RAISE(ABORT, 'messages are append-only'); END;
 
+CREATE TRIGGER IF NOT EXISTS participants_no_rename BEFORE UPDATE OF name ON participants
+BEGIN SELECT RAISE(ABORT, 'participant names are append-only'); END;
+
 CREATE TRIGGER IF NOT EXISTS message_attachments_no_update BEFORE UPDATE ON message_attachments
 BEGIN SELECT RAISE(ABORT, 'attachments are append-only'); END;
 

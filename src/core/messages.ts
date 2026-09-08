@@ -52,7 +52,7 @@ export class MessageService {
     const authorKind = input.authorKind ?? "human";
     if (!AUTHOR_KINDS.includes(authorKind)) throw new Invalid(`unknown author kind ${authorKind}`);
 
-    const participant = this.rooms.join(room.id, author, authorKind);
+    const participant = this.rooms.resolveParticipant(room.id, author, authorKind);
     const lang = kind === "code" ? input.lang?.trim() || null : null;
     const createdAt = Date.now();
     const seq = this.store.insertMessage({

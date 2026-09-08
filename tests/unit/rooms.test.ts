@@ -2,7 +2,7 @@ import { test, expect } from "bun:test";
 import { openDatabase } from "../../src/db/schema.ts";
 import { Store } from "../../src/db/store.ts";
 import { RoomService } from "../../src/core/rooms.ts";
-import { Invalid, NotFound } from "../../src/core/errors.ts";
+import { Conflict, Invalid, NotFound } from "../../src/core/errors.ts";
 
 const service = () => new RoomService(new Store(openDatabase(":memory:")));
 
@@ -39,4 +39,45 @@ test("reads back a room by the id it was given", () => {
   const rooms = service();
   const created = rooms.create({ name: "roundtrip", topic: "why" });
   expect(rooms.get(created.id)).toEqual(created);
+});
+
+test("refuses to admit a bot under a name a person already speaks under", () => {
+  const rooms = service();
+  const room = rooms.create({ name: "impersonation" });
+  rooms.join(room.id, "tom", "human");
+  expect(() => rooms.join(room.id, "tom", "bot")).toThrow(Conflict);
+});
+
+test("refuses to admit a person under a name a bot already speaks under", () => {
+  const rooms = service();
+  const room = rooms.create({ name: "impersonation" });
+  rooms.join(room.id, "ada", "bot");
+  expect(() => rooms.join(room.id, "ada", "human")).toThrow(Conflict);
+});
+
+test("admits the same participant twice without creating a second row", () => {
+  const rooms = service();
+  const room = rooms.create({ name: "idempotent" });
+  const first = rooms.join(room.id, "tom", "human");
+  expect(rooms.join(room.id, "tom", "human")).toEqual(first);
+  expect(rooms.participants(room.id)).toHaveLength(1);
+});
+
+test("resolves an existing participant whatever kind the caller assumed", () => {
+  const rooms = service();
+  const room = rooms.create({ name: "permissive" });
+  const bot = rooms.join(room.id, "ada", "bot");
+  expect(rooms.resolveParticipant(room.id, "ada", "human")).toEqual(bot);
+});
+
+test("creates a participant with the fallback kind when nobody holds the name", () => {
+  const rooms = service();
+  const room = rooms.create({ name: "permissive" });
+  expect(rooms.resolveParticipant(room.id, "ada", "bot").kind).toBe("bot");
+});
+
+test("rejects a participant name that is only whitespace", () => {
+  const rooms = service();
+  const room = rooms.create({ name: "blank" });
+  expect(() => rooms.join(room.id, "   ", "human")).toThrow(Invalid);
 });

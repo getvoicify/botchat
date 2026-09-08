@@ -1,8 +1,10 @@
 import type { Participant, Room, Store } from "../db/store.ts";
-import { Invalid, NotFound } from "./errors.ts";
+import { Conflict, Invalid, NotFound } from "./errors.ts";
 import { newId } from "./ids.ts";
 
 export type { Participant, Room };
+
+export type ParticipantKind = Participant["kind"];
 
 export class RoomService {
   constructor(private readonly store: Store) {}
@@ -30,19 +32,30 @@ export class RoomService {
     return room;
   }
 
-  join(roomId: string, name: string, kind: "human" | "bot"): Participant {
+  join(roomId: string, name: string, kind: ParticipantKind): Participant {
+    const { roomId: id, name: trimmed } = this.#target(roomId, name);
+    const existing = this.store.findParticipantByName(id, trimmed);
+    if (existing && existing.kind !== kind)
+      throw new Conflict(`${trimmed} is already in this room as a ${existing.kind}`);
+    return existing ?? this.#admit(id, trimmed, kind);
+  }
+
+  resolveParticipant(roomId: string, name: string, fallbackKind: ParticipantKind): Participant {
+    const { roomId: id, name: trimmed } = this.#target(roomId, name);
+    return (
+      this.store.findParticipantByName(id, trimmed) ?? this.#admit(id, trimmed, fallbackKind)
+    );
+  }
+
+  #target(roomId: string, name: string): { roomId: string; name: string } {
     const room = this.get(roomId);
-    const trimmed = name?.trim() ?? "";
+    const trimmed = typeof name === "string" ? name.trim() : "";
     if (!trimmed) throw new Invalid("participant name is required");
-    const existing = this.store.findParticipantByName(room.id, trimmed);
-    if (existing) return existing;
-    const participant: Participant = {
-      id: newId(),
-      roomId: room.id,
-      name: trimmed,
-      kind,
-      joinedAt: Date.now(),
-    };
+    return { roomId: room.id, name: trimmed };
+  }
+
+  #admit(roomId: string, name: string, kind: ParticipantKind): Participant {
+    const participant: Participant = { id: newId(), roomId, name, kind, joinedAt: Date.now() };
     this.store.insertParticipant(participant);
     return participant;
   }

@@ -12,7 +12,7 @@ function fixture() {
   const rooms = new RoomService(store);
   const messages = new MessageService(store, rooms, bus);
   const room = rooms.create({ name: "test" });
-  return { rooms, messages, bus, room };
+  return { store, rooms, messages, bus, room };
 }
 
 test("returns the appended message with its author and sequence", () => {
@@ -71,13 +71,16 @@ test("announces the room on the bus once a message is appended", () => {
 });
 
 test("makes the message readable by the time the bus fires", () => {
-  const { messages, bus, room } = fixture();
-  let visible: number = -1;
+  const { store, messages, bus, room } = fixture();
+  const observed: { inTransaction: boolean; visible: number }[] = [];
   bus.subscribe(room.id, () => {
-    visible = messages.since(room.id, 0).length;
+    observed.push({
+      inTransaction: store.db.inTransaction,
+      visible: messages.since(room.id, 0).length,
+    });
   });
   messages.post({ roomId: room.id, author: "tom", body: "hello" });
-  expect(visible).toBe(1);
+  expect(observed).toEqual([{ inTransaction: false, visible: 1 }]);
 });
 
 test("rejects a message with a blank body", () => {
@@ -229,4 +232,46 @@ test("stores a code body with its indentation and trailing newline intact", () =
   const posted = messages.post({ roomId: room.id, author: "tom", body, kind: "code", lang: "python" });
   expect(posted.body).toBe(body);
   expect(messages.latest(room.id)[0]!.body).toBe(body);
+});
+
+test("attributes a post to the bot already holding that name rather than refusing it", () => {
+  const { rooms, messages, room } = fixture();
+  rooms.join(room.id, "ada", "bot");
+  const posted = messages.post({ roomId: room.id, author: "ada", body: "beep" });
+  expect(posted.author).toBe("ada");
+  expect(rooms.participants(room.id)).toHaveLength(1);
+  expect(rooms.participants(room.id)[0]!.kind).toBe("bot");
+});
+
+test("refuses a message kind the schema would reject", () => {
+  const { messages, room } = fixture();
+  expect(() =>
+    messages.post({
+      roomId: room.id,
+      author: "tom",
+      body: "hi",
+      kind: "shout" as unknown as "text",
+    }),
+  ).toThrow(Invalid);
+});
+
+test("hands back only a page when paging forwards through a longer backlog", () => {
+  const { messages, room } = fixture();
+  fill((body) => messages.post({ roomId: room.id, author: "tom", body }), 5);
+  expect(messages.since(room.id, 0, 2).map((m) => m.body)).toEqual(["m0", "m1"]);
+  expect(messages.since(room.id, 2, 2).map((m) => m.body)).toEqual(["m2", "m3"]);
+});
+
+test("walks the whole history backwards one page at a time", () => {
+  const { messages, room } = fixture();
+  fill((body) => messages.post({ roomId: room.id, author: "tom", body }), 5);
+  const pages: string[][] = [];
+  let cursor = 6;
+  for (;;) {
+    const page = messages.before(room.id, cursor, 2);
+    if (page.length === 0) break;
+    pages.push(page.map((m) => m.body));
+    cursor = page[0]!.seq;
+  }
+  expect(pages).toEqual([["m3", "m4"], ["m1", "m2"], ["m0"]]);
 });
