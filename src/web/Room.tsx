@@ -1,10 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { getJson, postJson } from "./api.ts";
+import { AttachmentView, type Attachment } from "./AttachmentView.tsx";
 import { CodeBlock } from "./CodeBlock.tsx";
 import { parseDraft } from "./draft.ts";
 import { renderMarkdown } from "./markdown.tsx";
-
-type Attachment = { blobId: string; filename: string; mime: string; size: number };
 
 type Participant = { id: string; name: string; kind: "human" | "bot" };
 
@@ -251,10 +250,7 @@ export function Room({ roomId }: { roomId: string }) {
               {message.attachments.length > 0 ? (
                 <ul className="attachments">
                   {message.attachments.map((file) => (
-                    <li key={file.blobId}>
-                      <a href={`/api/blobs/${file.blobId}`}>{file.filename}</a>
-                      <span className="filesize">{file.size} bytes</span>
-                    </li>
+                    <AttachmentView key={file.blobId} file={file} />
                   ))}
                 </ul>
               ) : null}
