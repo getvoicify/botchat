@@ -186,6 +186,40 @@ and made later runs flakier.
 Every test server spawns its own `bun index.ts` and is discovered by parsing the
 `BOTCHAT_LISTENING <url>` line from stdout. Never remove that line.
 
+## Small rooms hide the bugs that matter
+
+Two defects survived a 46-test browser suite because every test used a room with
+a handful of messages:
+
+- The client opened its socket at `since=0`, so the server sent the **oldest**
+  500. A busy room opened at the *start* of the conversation, and each new post
+  advanced the cursor only one 500-batch, so a new message took ~20 posts to
+  appear. Fixed in the client: fetch `latest()` over HTTP, set the cursor to the
+  newest seq, *then* connect. `flush` stays lossless from whatever cursor it is
+  given, because the watcher and reap-resume depend on that.
+- `participantMessageCounts` scanned all 100,000 messages once per participant,
+  putting `join_room` at 168 ms p95 against a 100 ms budget. The index that
+  fixes it is `messages (participant_id)` — **not** `(room_id, participant_id)`,
+  because the join constrains `participant_id` alone.
+
+Both were found by `bun run bench`, not by the test suite. Reach for it when
+changing anything on the read path, and seed enough rows that a batch boundary
+is actually crossed: the backlog regression test needs ≥1000 messages, since at
+600 a single catch-up flush covers the gap and the test passes against the bug.
+
+`playwright`'s extracted text has no separators between elements — it reads
+`tommessage 1tommessage 2`. So `not.toContainText("message 1")` is both vacuous
+and wrong (it is a prefix of `message 101`). Make fixture bodies
+self-disambiguating instead.
+
+## Mutation testing finds what review misses
+
+Two blind spots survived every review and were found only by breaking the code
+and watching nothing go red: changing `LEFT JOIN` to `JOIN` in the participant
+count (a bot that had said nothing vanished from its own join digest), and
+rewriting the batched attachment read as a per-message loop. When a test passes
+on its first run, break the thing it covers before moving on.
+
 ## Orchestration
 
 Implementation subagents share this working tree. Stage by explicit path and
