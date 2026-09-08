@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "test:unit": "bun test tests/unit",
     "test:e2e": "playwright test",
+    "bench": "bun tests/perf/measure.ts",
     "test": "bun run typecheck && bun run test:unit && bun run test:e2e"
   },
   "devDependencies": {
