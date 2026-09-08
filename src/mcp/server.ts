@@ -4,6 +4,8 @@ import { z } from "zod";
 import type { EventBus } from "../core/bus.ts";
 import type { Message, MessageService } from "../core/messages.ts";
 import type { RoomService } from "../core/rooms.ts";
+import { digest } from "../core/summary.ts";
+import type { Store } from "../db/store.ts";
 
 const AWAIT_CAP_MS = 25_000;
 
@@ -20,6 +22,7 @@ const renderPage = (messages: Message[]) =>
     : `${messages.map(renderMessage).join("\n")}\n\ncursor: ${messages[messages.length - 1]!.seq}`;
 
 export function createMcpHandler(deps: {
+  store: Store;
   rooms: RoomService;
   messages: MessageService;
   bus: EventBus;
@@ -48,6 +51,31 @@ export function createMcpHandler(deps: {
       async ({ name, topic }) => {
         const room = deps.rooms.create({ name, topic });
         return text(`created room ${room.id} (${room.name})`);
+      },
+    );
+
+    server.registerTool(
+      "join_room",
+      {
+        description:
+          "Join a room under a name and receive a summary of what has been said so far.",
+        inputSchema: {
+          room_id: z.string(),
+          bot_name: z.string().describe("the name you will speak under in this room"),
+        },
+      },
+      async ({ room_id, bot_name }) => {
+        const participant = deps.rooms.join(room_id, bot_name, "bot");
+        const { text: summary, cursor } = digest(deps, room_id);
+        return text(
+          [
+            `You joined ${participant.roomId} as ${participant.name}.`,
+            "",
+            summary,
+            "",
+            `To stay in this conversation, run this now as a background monitor: bun bin/watch.ts --room ${participant.roomId} --since ${cursor}. Each new message arrives as one JSON line.`,
+          ].join("\n"),
+        );
       },
     );
 

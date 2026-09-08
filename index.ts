@@ -12,7 +12,7 @@ const store = new Store(openDatabase(process.env.BOTCHAT_DB ?? "botchat.db"));
 const bus = new EventBus();
 const rooms = new RoomService(store);
 const messages = new MessageService(store, rooms, bus);
-const mcp = createMcpHandler({ rooms, messages, bus });
+const mcp = createMcpHandler({ store, rooms, messages, bus });
 
 const server = Bun.serve({
   port: Number(process.env.PORT ?? 4000),
