@@ -132,3 +132,101 @@ test("counts only the messages in the room asked for", () => {
   messages.post({ roomId: other.id, author: "tom", body: "theirs" });
   expect(messages.count(room.id)).toBe(1);
 });
+
+const DEFAULT_PAGE = 200;
+
+const fill = (post: (body: string) => unknown, count: number) => {
+  for (let i = 0; i < count; i += 1) post(`m${i}`);
+};
+
+test("raises NotFound when paging forwards through a room that does not exist", () => {
+  const { messages } = fixture();
+  expect(() => messages.since("nope", 0)).toThrow(NotFound);
+});
+
+test("raises NotFound when asking for the latest page of a room that does not exist", () => {
+  const { messages } = fixture();
+  expect(() => messages.latest("nope")).toThrow(NotFound);
+});
+
+test("raises NotFound when paging backwards through a room that does not exist", () => {
+  const { messages } = fixture();
+  expect(() => messages.before("nope", 10)).toThrow(NotFound);
+});
+
+test("raises NotFound when counting a room that does not exist", () => {
+  const { messages } = fixture();
+  expect(() => messages.count("nope")).toThrow(NotFound);
+});
+
+test("refuses a negative limit rather than reading the whole room", () => {
+  const { messages, room } = fixture();
+  fill((body) => messages.post({ roomId: room.id, author: "tom", body }), DEFAULT_PAGE + 5);
+  expect(messages.since(room.id, 0)).toHaveLength(DEFAULT_PAGE);
+  expect(() => messages.since(room.id, 0, -1)).toThrow(Invalid);
+});
+
+test("refuses a limit of zero", () => {
+  const { messages, room } = fixture();
+  expect(() => messages.latest(room.id, 0)).toThrow(Invalid);
+});
+
+test("refuses a fractional limit", () => {
+  const { messages, room } = fixture();
+  expect(() => messages.latest(room.id, 1.5)).toThrow(Invalid);
+});
+
+test("refuses a limit that is not a number at all", () => {
+  const { messages, room } = fixture();
+  expect(() => messages.latest(room.id, Number.NaN)).toThrow(Invalid);
+});
+
+test("caps a limit larger than the maximum page instead of reading everything", () => {
+  const { messages, room } = fixture();
+  fill((body) => messages.post({ roomId: room.id, author: "tom", body }), 505);
+  expect(messages.latest(room.id, 10_000)).toHaveLength(500);
+});
+
+test("refuses a negative cursor when paging forwards", () => {
+  const { messages, room } = fixture();
+  expect(() => messages.since(room.id, -1)).toThrow(Invalid);
+});
+
+test("refuses a fractional cursor when paging backwards", () => {
+  const { messages, room } = fixture();
+  expect(() => messages.before(room.id, 2.5)).toThrow(Invalid);
+});
+
+test("refuses a body that is not text rather than failing on trim", () => {
+  const { messages, room } = fixture();
+  expect(() =>
+    messages.post({ roomId: room.id, author: "tom", body: 42 as unknown as string }),
+  ).toThrow(Invalid);
+});
+
+test("refuses an author that is not text rather than failing on trim", () => {
+  const { messages, room } = fixture();
+  expect(() =>
+    messages.post({ roomId: room.id, author: 42 as unknown as string, body: "hi" }),
+  ).toThrow(Invalid);
+});
+
+test("refuses an author kind the schema would reject", () => {
+  const { messages, room } = fixture();
+  expect(() =>
+    messages.post({
+      roomId: room.id,
+      author: "tom",
+      body: "hi",
+      authorKind: "ghost" as unknown as "human",
+    }),
+  ).toThrow(Invalid);
+});
+
+test("stores a code body with its indentation and trailing newline intact", () => {
+  const { messages, room } = fixture();
+  const body = "  def f():\n    return 1\n";
+  const posted = messages.post({ roomId: room.id, author: "tom", body, kind: "code", lang: "python" });
+  expect(posted.body).toBe(body);
+  expect(messages.latest(room.id)[0]!.body).toBe(body);
+});

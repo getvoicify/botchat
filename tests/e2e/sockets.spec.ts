@@ -38,3 +38,12 @@ test("keeps the browser live across an idle reap", async ({ page, server }) => {
   await expect(page.getByTestId("transcript")).toContainText("after two reap windows");
   await expect(page.getByTestId("transcript")).toHaveAttribute("data-connection", "open");
 });
+
+test("closes a socket opened for a room that does not exist", async ({ server }) => {
+  const socket = new WebSocket(`${server.url.replace(/^http/, "ws")}/ws?room=nope&since=0`);
+  const closed = await new Promise<{ code: number; reason: string }>((resolve, reject) => {
+    socket.onclose = (event) => resolve({ code: event.code, reason: event.reason });
+    setTimeout(() => reject(new Error("socket for a missing room was left open")), 5_000);
+  });
+  expect(closed.reason).toBe("no such room");
+});

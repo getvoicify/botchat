@@ -39,8 +39,13 @@ export function createSocketHandlers(deps: { messages: MessageService; bus: Even
     // be delivered by neither.
     open(ws: ServerWebSocket<SocketData>) {
       ws.data.lastActivity = Date.now();
+      try {
+        flush(ws);
+      } catch {
+        ws.close(1008, "no such room");
+        return;
+      }
       live.add(ws);
-      flush(ws);
       ws.data.unsubscribe = deps.bus.subscribe(ws.data.roomId, () => flush(ws));
     },
     message(ws: ServerWebSocket<SocketData>) {
