@@ -1,4 +1,6 @@
 import { Database } from "bun:sqlite";
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS rooms (
@@ -60,6 +62,8 @@ BEGIN SELECT RAISE(ABORT, 'attachments are append-only'); END;
 `;
 
 export function openDatabase(path: string): Database {
+  // Guarded so an in-memory database never depends on the filesystem.
+  if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
   const db = new Database(path, { create: true });
   db.exec("PRAGMA journal_mode = WAL");
   db.exec("PRAGMA synchronous = FULL");

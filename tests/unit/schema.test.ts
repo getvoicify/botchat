@@ -130,3 +130,11 @@ test("refuses to delete an attachment that has already been written", () => {
   );
   expect(() => db.run("DELETE FROM message_attachments")).toThrow(/append-only/);
 });
+
+test("creates the directory the database was asked to live in", () => {
+  const root = `${tmpdir()}/botchat-${crypto.randomUUID()}`;
+  const db = openDatabase(`${root}/nested/botchat.db`);
+  expect(db.query("PRAGMA journal_mode").get()).toEqual({ journal_mode: "wal" });
+  db.close();
+  rmSync(root, { recursive: true, force: true });
+});
