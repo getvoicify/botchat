@@ -12,6 +12,7 @@ if (!roomId) {
 }
 
 const base = args.get("url") ?? process.env.BOTCHAT_URL ?? "http://localhost:4000";
+const maxConsecutiveFailures = Number(process.env.BOTCHAT_WATCH_MAX_FAILURES ?? 60);
 let cursor = Number(args.get("since") ?? 0);
 let retries = 0;
 
@@ -34,6 +35,10 @@ function connect(): void {
   socket.onclose = (event) => {
     const reaped = event.reason === "idle";
     retries = reaped ? 0 : retries + 1;
+    if (retries >= maxConsecutiveFailures) {
+      console.error(`botchat: gave up after ${retries} failed reconnects to ${base}`);
+      process.exit(1);
+    }
     setTimeout(connect, reaped ? 0 : Math.min(5_000, 100 * 2 ** retries));
   };
 
