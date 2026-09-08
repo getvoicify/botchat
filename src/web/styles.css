@@ -13,3 +13,13 @@ button { padding: 0.55rem 0.9rem; border: 0; border-radius: 8px; background: var
 .rooms { list-style: none; padding: 0; display: grid; gap: 0.5rem; }
 .rooms li a { display: block; padding: 0.75rem 0.9rem; border: 1px solid var(--line); border-radius: 10px; text-decoration: none; color: inherit; }
 .rooms li a:hover { border-color: var(--accent); }
+.crumbs { margin: 0 0 1rem; }
+.crumbs a { color: var(--accent); text-decoration: none; }
+.transcript { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.6rem; }
+.message { padding: 0.6rem 0.8rem; border: 1px solid var(--line); border-radius: 10px; }
+.message p { margin: 0.15rem 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.message-system { opacity: 0.7; font-style: italic; }
+.author { font-size: 0.8rem; font-weight: 600; opacity: 0.75; }
+.reconnecting { margin: 0.75rem 0 0; font-size: 0.85rem; opacity: 0.7; }
+pre { margin: 0.35rem 0 0; }
+pre code { display: block; padding: 0.6rem 0.7rem; border-radius: 8px; background: color-mix(in srgb, var(--fg) 8%, transparent); font: 13px/1.5 ui-monospace, SFMono-Regular, monospace; overflow-x: auto; }
