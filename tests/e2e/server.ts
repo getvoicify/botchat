@@ -15,9 +15,17 @@ export type Server = {
 
 type Booted = { url: string; proc: ChildProcessWithoutNullStreams };
 
-function boot(dataDir: string, extraEnv: Record<string, string>): Promise<Booted> {
+export type BootOptions = { command?: string[]; bootTimeoutMs?: number };
+
+function boot(
+  dataDir: string,
+  extraEnv: Record<string, string>,
+  options: BootOptions = {},
+): Promise<Booted> {
+  const [program = "bun", ...programArgs] = options.command ?? ["bun", "index.ts"];
+  const bootTimeoutMs = options.bootTimeoutMs ?? 15_000;
   return new Promise((resolve, reject) => {
-    const proc = spawn("bun", ["index.ts"], {
+    const proc = spawn(program, programArgs, {
       cwd: repoRoot,
       env: {
         ...process.env,
@@ -28,12 +36,18 @@ function boot(dataDir: string, extraEnv: Record<string, string>): Promise<Booted
       },
     }) as ChildProcessWithoutNullStreams;
 
-    const timer = setTimeout(
-      () => reject(new Error("server never printed BOTCHAT_LISTENING")),
-      15_000,
-    );
     let out = "";
     let err = "";
+    const captured = () => `stdout: ${out || "<empty>"}\nstderr: ${err || "<empty>"}`;
+
+    const timer = setTimeout(() => {
+      proc.kill("SIGKILL");
+      reject(
+        new Error(
+          `server timed out after ${bootTimeoutMs}ms without printing BOTCHAT_LISTENING\n${captured()}`,
+        ),
+      );
+    }, bootTimeoutMs);
     proc.stdout.on("data", (chunk) => {
       out += chunk;
       const match = out.match(/BOTCHAT_LISTENING (\S+)/);
@@ -46,14 +60,23 @@ function boot(dataDir: string, extraEnv: Record<string, string>): Promise<Booted
     });
     proc.on("exit", (code) => {
       clearTimeout(timer);
-      reject(new Error(`server exited with ${code}: ${err}`));
+      reject(new Error(`server exited with ${code} before it was listening\n${captured()}`));
     });
   });
 }
 
-export async function startServer(extraEnv: Record<string, string> = {}): Promise<Server> {
+export async function startServer(
+  extraEnv: Record<string, string> = {},
+  options: BootOptions = {},
+): Promise<Server> {
   const dataDir = await mkdtemp(join(tmpdir(), "botchat-"));
-  let current = await boot(dataDir, extraEnv);
+  let current: Booted;
+  try {
+    current = await boot(dataDir, extraEnv, options);
+  } catch (failure) {
+    await rm(dataDir, { recursive: true, force: true });
+    throw failure;
+  }
 
   const kill = () =>
     new Promise<void>((resolve) => {
@@ -70,7 +93,7 @@ export async function startServer(extraEnv: Record<string, string> = {}): Promis
     dataDir,
     async restart() {
       await kill();
-      current = await boot(dataDir, extraEnv);
+      current = await boot(dataDir, extraEnv, options);
     },
     async stop() {
       await kill();
