@@ -30,7 +30,11 @@ export type ParticipantMessageCount = {
 
 export type AttachmentSummary = { filename: string; mime: string; size: number };
 
+export type BlobRecord = { id: string; mime: string; size: number; createdAt: number };
+
 type RoomRow = { id: string; name: string; topic: string | null; created_at: number };
+
+type BlobRow = { id: string; mime: string; size: number; created_at: number };
 
 type ParticipantRow = {
   id: string;
@@ -69,6 +73,13 @@ const toParticipant = (row: ParticipantRow): Participant => ({
   joinedAt: row.joined_at,
 });
 
+const toBlob = (row: BlobRow): BlobRecord => ({
+  id: row.id,
+  mime: row.mime,
+  size: row.size,
+  createdAt: row.created_at,
+});
+
 const toMessage = (row: MessageRow): Message => ({
   seq: row.seq,
   roomId: row.room_id,
@@ -95,6 +106,8 @@ export class Store {
   #participantMessageCounts: Statement<ParticipantMessageCount>;
   #codeLanguages: Statement<{ lang: string }>;
   #attachmentManifest: Statement<AttachmentSummary>;
+  #insertBlob: Statement;
+  #findBlob: Statement<BlobRow>;
 
   constructor(db: Database) {
     this.db = db;
@@ -143,6 +156,10 @@ export class Store {
         "JOIN messages m ON m.seq = a.message_seq JOIN blobs b ON b.id = a.blob_id " +
         "WHERE m.room_id = $roomId ORDER BY a.message_seq",
     );
+    this.#insertBlob = db.prepare(
+      "INSERT INTO blobs (id, mime, size, created_at) VALUES ($id, $mime, $size, $createdAt)",
+    );
+    this.#findBlob = db.prepare("SELECT * FROM blobs WHERE id = $id");
   }
 
   insertRoom(room: Room): void {
@@ -231,5 +248,19 @@ export class Store {
 
   attachmentManifest(roomId: string): AttachmentSummary[] {
     return this.#attachmentManifest.all({ $roomId: roomId });
+  }
+
+  insertBlob(record: BlobRecord): void {
+    this.#insertBlob.run({
+      $id: record.id,
+      $mime: record.mime,
+      $size: record.size,
+      $createdAt: record.createdAt,
+    });
+  }
+
+  findBlob(id: string): BlobRecord | null {
+    const row = this.#findBlob.get({ $id: id });
+    return row ? toBlob(row) : null;
   }
 }

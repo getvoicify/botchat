@@ -1,4 +1,5 @@
 import type { BunRequest } from "bun";
+import type { BlobStore } from "../core/blobs.ts";
 import { Conflict, Invalid, NotFound } from "../core/errors.ts";
 import type { MessageKind, MessageService } from "../core/messages.ts";
 import type { RoomService } from "../core/rooms.ts";
@@ -23,8 +24,31 @@ export const guard =
     }
   };
 
-export function roomRoutes(deps: { rooms: RoomService; messages: MessageService }) {
+export function roomRoutes(deps: {
+  rooms: RoomService;
+  messages: MessageService;
+  blobs: BlobStore;
+}) {
   return {
+    "/api/blobs": {
+      POST: guard(async (req: BunRequest<"/api/blobs">) => {
+        const bytes = new Uint8Array(await req.arrayBuffer());
+        const mime = req.headers.get("content-type") ?? "";
+        return Response.json(await deps.blobs.put(bytes, mime), { status: 201 });
+      }),
+    },
+    "/api/blobs/:id": {
+      GET: guard(async (req: BunRequest<"/api/blobs/:id">) => {
+        const { file, record } = await deps.blobs.open(req.params.id);
+        // The URL is the hash of the bytes, so the response can never change.
+        return new Response(file, {
+          headers: {
+            "content-type": record.mime,
+            "cache-control": "public, max-age=31536000, immutable",
+          },
+        });
+      }),
+    },
     "/api/rooms": {
       GET: guard(() => Response.json(deps.rooms.list())),
       POST: guard(async (req: BunRequest<"/api/rooms">) =>

@@ -1,4 +1,5 @@
 import index from "./src/web/index.html";
+import { BlobStore } from "./src/core/blobs.ts";
 import { EventBus } from "./src/core/bus.ts";
 import { MessageService } from "./src/core/messages.ts";
 import { RoomService } from "./src/core/rooms.ts";
@@ -12,6 +13,7 @@ const store = new Store(openDatabase(process.env.BOTCHAT_DB ?? "botchat.db"));
 const bus = new EventBus();
 const rooms = new RoomService(store);
 const messages = new MessageService(store, rooms, bus);
+const blobs = new BlobStore(store, process.env.BOTCHAT_BLOBS ?? "data/blobs");
 const mcp = createMcpHandler({ store, rooms, messages, bus });
 
 const server = Bun.serve({
@@ -24,7 +26,7 @@ const server = Bun.serve({
     "/": index,
     "/rooms/:id": index,
     "/mcp": { GET: mcp, POST: mcp, DELETE: mcp },
-    ...roomRoutes({ rooms, messages }),
+    ...roomRoutes({ rooms, messages, blobs }),
   },
   fetch(req, server) {
     const url = new URL(req.url);
