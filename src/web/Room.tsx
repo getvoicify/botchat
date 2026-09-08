@@ -94,7 +94,16 @@ export function Room({ roomId }: { roomId: string }) {
     };
 
     refreshRoom();
-    connect();
+    // The socket is lossless from the cursor it is given, so it must not open
+    // until the cursor sits at the newest message the room already holds.
+    getJson<Message[]>(`/api/rooms/${roomId}/messages`)
+      .then((history) => {
+        if (disposed) return;
+        setMessages(history);
+        cursor.current = history[history.length - 1]?.seq ?? 0;
+      })
+      .catch(() => {})
+      .finally(connect);
     return () => {
       disposed = true;
       clearTimeout(timer);
