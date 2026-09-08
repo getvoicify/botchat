@@ -22,6 +22,14 @@ export type Message = {
   createdAt: number;
 };
 
+export type ParticipantMessageCount = {
+  name: string;
+  kind: "human" | "bot";
+  messages: number;
+};
+
+export type AttachmentSummary = { filename: string; mime: string; size: number };
+
 type RoomRow = { id: string; name: string; topic: string | null; created_at: number };
 
 type ParticipantRow = {
@@ -84,6 +92,9 @@ export class Store {
   #messagesLatest: Statement<MessageRow>;
   #messagesBefore: Statement<MessageRow>;
   #countMessages: Statement<{ n: number }>;
+  #participantMessageCounts: Statement<ParticipantMessageCount>;
+  #codeLanguages: Statement<{ lang: string }>;
+  #attachmentManifest: Statement<AttachmentSummary>;
 
   constructor(db: Database) {
     this.db = db;
@@ -116,6 +127,22 @@ export class Store {
       `SELECT ${MESSAGE_COLUMNS} WHERE m.room_id = $roomId AND m.seq < $before ORDER BY m.seq DESC LIMIT $limit`,
     );
     this.#countMessages = db.prepare("SELECT COUNT(*) AS n FROM messages WHERE room_id = $roomId");
+    // LEFT JOIN so a participant who has said nothing still appears; a bot that
+    // has just joined must show up in the digest it is handed.
+    this.#participantMessageCounts = db.prepare(
+      "SELECT p.name, p.kind, COUNT(m.seq) AS messages " +
+        "FROM participants p LEFT JOIN messages m ON m.participant_id = p.id " +
+        "WHERE p.room_id = $roomId GROUP BY p.id ORDER BY messages DESC, p.joined_at ASC",
+    );
+    this.#codeLanguages = db.prepare(
+      "SELECT DISTINCT lang FROM messages " +
+        "WHERE room_id = $roomId AND kind = 'code' AND lang IS NOT NULL ORDER BY lang",
+    );
+    this.#attachmentManifest = db.prepare(
+      "SELECT a.filename, b.mime, b.size FROM message_attachments a " +
+        "JOIN messages m ON m.seq = a.message_seq JOIN blobs b ON b.id = a.blob_id " +
+        "WHERE m.room_id = $roomId ORDER BY a.message_seq",
+    );
   }
 
   insertRoom(room: Room): void {
@@ -192,5 +219,17 @@ export class Store {
 
   countMessages(roomId: string): number {
     return this.#countMessages.get({ $roomId: roomId })?.n ?? 0;
+  }
+
+  participantMessageCounts(roomId: string): ParticipantMessageCount[] {
+    return this.#participantMessageCounts.all({ $roomId: roomId });
+  }
+
+  codeLanguages(roomId: string): string[] {
+    return this.#codeLanguages.all({ $roomId: roomId }).map((row) => row.lang);
+  }
+
+  attachmentManifest(roomId: string): AttachmentSummary[] {
+    return this.#attachmentManifest.all({ $roomId: roomId });
   }
 }
