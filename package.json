@@ -6,9 +6,10 @@
   "scripts": {
     "dev": "BOTCHAT_DEV=1 bun --hot index.ts",
     "start": "bun index.ts",
+    "typecheck": "tsc --noEmit",
     "test:unit": "bun test tests/unit",
     "test:e2e": "playwright test",
-    "test": "bun run test:unit && bun run test:e2e"
+    "test": "bun run typecheck && bun run test:unit && bun run test:e2e"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

@@ -38,7 +38,7 @@ function boot(dataDir: string): Promise<Booted> {
       const match = out.match(/BOTCHAT_LISTENING (\S+)/);
       if (!match) return;
       clearTimeout(timer);
-      resolve({ url: match[1].replace(/\/$/, ""), proc });
+      resolve({ url: match[1]!.replace(/\/$/, ""), proc });
     });
     proc.stderr.on("data", (chunk) => {
       err += chunk;

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { getJson, postJson } from "./api.ts";
 
 type Room = { id: string; name: string; topic: string | null; createdAt: number };
 
@@ -8,8 +9,7 @@ export function RoomList() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/rooms")
-      .then((res) => res.json())
+    getJson<Room[]>("/api/rooms")
       .then(setRooms)
       .catch(() => setError("could not load rooms"));
   }, []);
@@ -17,14 +17,9 @@ export function RoomList() {
   async function create(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
-    const res = await fetch("/api/rooms", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name }),
-    });
-    const body = await res.json();
-    if (!res.ok) return setError(body.error);
-    setRooms((current) => [body, ...current]);
+    const { ok, data } = await postJson<Room & { error?: string }>("/api/rooms", { name });
+    if (!ok) return setError(data.error ?? "could not create room");
+    setRooms((current) => [data, ...current]);
     setName("");
   }
 
