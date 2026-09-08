@@ -32,11 +32,62 @@ test("stops delivering to a listener that unsubscribed", () => {
   expect(calls).toBe(1);
 });
 
-test("forgets a room once its last subscriber leaves", () => {
+test("keeps no record of a room once its last subscriber leaves", () => {
+  const bus = new EventBus();
+  const off = bus.subscribe("r1", () => {});
+  expect(bus.trackedRooms()).toBe(1);
+  off();
+  expect(bus.trackedRooms()).toBe(0);
+});
+
+test("keeps delivering to a later subscriber after an earlier one unsubscribes twice", () => {
   const bus = new EventBus();
   const off = bus.subscribe("r1", () => {});
   off();
-  expect(bus.listenerCount("r1")).toBe(0);
+  let reached = 0;
+  bus.subscribe("r1", () => {
+    reached += 1;
+  });
+  off();
+  bus.emit("r1");
+  expect(reached).toBe(1);
+});
+
+test("still reaches the other subscribers when one of them throws", () => {
+  const bus = new EventBus();
+  let reached = 0;
+  bus.subscribe("r1", () => {
+    throw new Error("boom");
+  });
+  bus.subscribe("r1", () => {
+    reached += 1;
+  });
+  expect(() => bus.emit("r1")).not.toThrow();
+  expect(reached).toBe(1);
+});
+
+test("does not call a listener that another listener removed mid-emit", () => {
+  const bus = new EventBus();
+  const seen: string[] = [];
+  let removeSecond = () => {};
+  bus.subscribe("r1", () => {
+    seen.push("first");
+    removeSecond();
+  });
+  removeSecond = bus.subscribe("r1", () => seen.push("second"));
+  bus.emit("r1");
+  expect(seen).toEqual(["first"]);
+});
+
+test("does not call a listener that subscribed during the same emit", () => {
+  const bus = new EventBus();
+  const seen: string[] = [];
+  bus.subscribe("r1", () => {
+    seen.push("first");
+    bus.subscribe("r1", () => seen.push("latecomer"));
+  });
+  bus.emit("r1");
+  expect(seen).toEqual(["first"]);
 });
 
 test("survives a listener that unsubscribes itself during an emit", () => {
@@ -51,11 +102,13 @@ test("survives a listener that unsubscribes itself during an emit", () => {
   expect(seen).toEqual(["self", "other"]);
 });
 
-test("resolves once when a message arrives before the timeout", async () => {
+test("resolves a wait promptly rather than by hitting its timeout", async () => {
   const bus = new EventBus();
+  const started = Date.now();
   const waiting = bus.once("r1", 5_000);
   bus.emit("r1");
   await waiting;
+  expect(Date.now() - started).toBeLessThan(100);
   expect(bus.listenerCount("r1")).toBe(0);
 });
 
