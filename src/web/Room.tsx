@@ -44,6 +44,7 @@ export function Room({ roomId }: { roomId: string }) {
   const cursor = useRef(0);
   const me = useRef(displayName());
   const transcript = useRef<HTMLOListElement>(null);
+  const box = useRef<HTMLTextAreaElement>(null);
   const following = useRef(true);
   const known = useRef(new Set<string>());
   const refreshing = useRef(false);
@@ -125,6 +126,13 @@ export function Room({ roomId }: { roomId: string }) {
     el.scrollTop = el.scrollHeight;
   }, [messages.length]);
 
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [draft]);
+
   function trackPosition() {
     const el = transcript.current;
     if (!el) return;
@@ -163,13 +171,15 @@ export function Room({ roomId }: { roomId: string }) {
   async function send(event: React.FormEvent) {
     event.preventDefault();
     const { kind, body, lang } = parseDraft(draft);
-    if (!body.trim()) return;
     const attachments = pending.map(({ blobId, filename }) => ({ blobId, filename }));
+    // The core refuses a blank body, so a message that is only files names them.
+    const spoken = body || attachments.map((file) => file.filename).join(", ");
+    if (!spoken) return;
     setDraft("");
     setPending([]);
     await postJson(`/api/rooms/${roomId}/messages`, {
       author: me.current,
-      body,
+      body: spoken,
       kind,
       lang,
       attachments,
@@ -258,28 +268,31 @@ export function Room({ roomId }: { roomId: string }) {
         ) : null}
       </div>
       {connection === "closed" ? <p className="reconnecting">Reconnecting…</p> : null}
-      {pending.length > 0 ? (
-        <ul className="pending" data-testid="pending-attachments">
-          {pending.map((file, index) => (
-            <li key={`${file.blobId}:${index}`}>
-              {file.filename}
-              <button
-                type="button"
-                aria-label={`Remove ${file.filename}`}
-                onClick={() => setPending((current) => current.filter((_, at) => at !== index))}
-              >
-                ×
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      <form className="composer" onSubmit={send}>
-        <label htmlFor="message">Message</label>
+      <form className="composer" data-testid="composer" onSubmit={send}>
+        {pending.length > 0 ? (
+          <ul className="pending" data-testid="pending-attachments">
+            {pending.map((file, index) => (
+              <li key={`${file.blobId}:${index}`}>
+                {file.filename}
+                <button
+                  type="button"
+                  aria-label={`Remove ${file.filename}`}
+                  onClick={() => setPending((current) => current.filter((_, at) => at !== index))}
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        <label className="sr-only" htmlFor="message">
+          Message
+        </label>
         <textarea
           id="message"
+          ref={box}
           value={draft}
-          rows={Math.min(12, draft.split("\n").length)}
+          rows={1}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key !== "Enter" || e.shiftKey) return;
@@ -288,9 +301,26 @@ export function Room({ roomId }: { roomId: string }) {
           }}
           placeholder={`Message as ${me.current}`}
         />
-        <label htmlFor="attachment">Attach a file</label>
-        <input id="attachment" type="file" multiple onChange={attach} />
-        <button type="submit">Send</button>
+        <div className="controls">
+          <label className="attach" htmlFor="attachment">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <path
+                d="M21 11.5 12.5 20a5.5 5.5 0 0 1-7.8-7.8l8.5-8.5a3.7 3.7 0 0 1 5.2 5.2l-8.5 8.5a1.8 1.8 0 0 1-2.6-2.6l7.8-7.8"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            <span className="sr-only">Attach a file</span>
+          </label>
+          <input className="sr-only" id="attachment" type="file" multiple onChange={attach} />
+          <span className="hint">Enter to send · Shift+Enter for a new line</span>
+          <button type="submit" disabled={!draft.trim() && pending.length === 0}>
+            Send
+          </button>
+        </div>
       </form>
     </main>
   );

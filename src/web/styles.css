@@ -4,10 +4,18 @@
 body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 ui-sans-serif, system-ui, sans-serif; }
 .shell { max-width: 44rem; margin: 0 auto; padding: 2rem 1.25rem 0; height: 100vh; height: 100svh; display: flex; flex-direction: column; }
 h1 { font-size: 1.4rem; letter-spacing: -0.01em; }
-.composer { flex: 0 0 auto; display: flex; gap: 0.5rem; align-items: flex-end; margin: 0.9rem 0 1.25rem; }
-.composer textarea { resize: none; overflow-y: auto; line-height: 1.45; }
+.composer { flex: 0 0 auto; display: flex; flex-direction: column; gap: 0.35rem; margin: 0.9rem 0 1.25rem; padding: 0.5rem 0.6rem; border: 1px solid var(--line); border-radius: 14px; background: color-mix(in srgb, var(--fg) 3%, transparent); }
+.composer:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }
+.composer textarea { flex: none; width: 100%; max-height: 17rem; padding: 0.3rem 0.25rem; border: 0; border-radius: 0; background: transparent; resize: none; overflow-y: auto; line-height: 1.45; }
+.composer textarea:focus { outline: none; }
+.controls { display: flex; align-items: center; gap: 0.5rem; }
+.attach { display: inline-flex; align-items: center; justify-content: center; width: 1.9rem; height: 1.9rem; border-radius: 8px; color: inherit; opacity: 0.65; cursor: pointer; }
+.attach:hover { opacity: 1; background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.hint { margin-left: auto; font-size: 0.72rem; opacity: 0.5; }
+.composer button[type=submit] { padding: 0.35rem 0.9rem; font-size: 0.9rem; }
+.composer button[type=submit]:disabled { opacity: 0.4; cursor: not-allowed; }
 /* Hidden visually, not removed: getByLabel resolves the accessible name, which a placeholder does not provide. */
-.composer label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 input, textarea { flex: 1; padding: 0.55rem 0.7rem; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: inherit; font: inherit; }
 button { padding: 0.55rem 0.9rem; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font: inherit; cursor: pointer; }
 .error { color: #c92a2a; }
@@ -71,8 +79,7 @@ pre code { display: block; padding: 0.6rem 0.7rem; border-radius: 0 0 8px 8px; b
   .hljs-attr, .hljs-attribute, .hljs-variable, .hljs-template-variable { color: #c1382b; }
   .hljs-built_in, .hljs-type, .hljs-class .hljs-title { color: #8a6d1f; }
 }
-.composer input[type=file] { flex: 0 1 auto; padding: 0.35rem; border: 0; }
-.pending { list-style: none; margin: 1rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.pending { list-style: none; margin: 0 0 0.15rem; padding: 0; display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .pending li { display: flex; align-items: center; gap: 0.3rem; padding: 0.15rem 0.3rem 0.15rem 0.6rem; border: 1px solid var(--line); border-radius: 999px; font-size: 0.85rem; }
 .pending button { padding: 0 0.3rem; background: none; color: inherit; font-size: 1rem; line-height: 1; }
 .attachments { list-style: none; margin: 0.4rem 0 0; padding: 0; display: grid; gap: 0.2rem; }
