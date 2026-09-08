@@ -24,6 +24,12 @@ test("counts what each participant has said", () => {
   expect(text).toMatch(/ada.*5/);
 });
 
+test("lists a participant who has said nothing among who is here", () => {
+  const { store, rooms, messages, room } = busyRoom(4);
+  rooms.join(room.id, "scribe", "bot");
+  expect(digest({ store, rooms, messages }, room.id).text).toContain("scribe (bot): 0 messages");
+});
+
 test("reports the total number of messages in the room", () => {
   const { store, rooms, messages, room } = busyRoom(40);
   expect(digest({ store, rooms, messages }, room.id).text).toContain("40");

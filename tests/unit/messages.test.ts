@@ -1,4 +1,4 @@
-import { test, expect } from "bun:test";
+import { test, expect, spyOn } from "bun:test";
 import { openDatabase } from "../../src/db/schema.ts";
 import { Store } from "../../src/db/store.ts";
 import { RoomService } from "../../src/core/rooms.ts";
@@ -274,4 +274,30 @@ test("walks the whole history backwards one page at a time", () => {
     cursor = page[0]!.seq;
   }
   expect(pages).toEqual([["m3", "m4"], ["m1", "m2"], ["m0"]]);
+});
+
+test("reads a page's attachments in one query rather than one per message", () => {
+  const { store, messages, room } = fixture();
+  for (let i = 1; i <= 5; i += 1) {
+    const blobId = String(i).repeat(64);
+    store.insertBlob({ id: blobId, mime: "text/plain", size: 1, createdAt: Date.now() });
+    messages.post({
+      roomId: room.id,
+      author: "tom",
+      body: `message ${i}`,
+      attachments: [{ blobId, filename: `file-${i}.txt` }],
+    });
+  }
+
+  const reads = spyOn(store, "attachmentsForMessages");
+  const page = messages.latest(room.id);
+
+  expect(page.map((m) => m.attachments.map((a) => a.filename))).toEqual([
+    ["file-1.txt"],
+    ["file-2.txt"],
+    ["file-3.txt"],
+    ["file-4.txt"],
+    ["file-5.txt"],
+  ]);
+  expect(reads).toHaveBeenCalledTimes(1);
 });

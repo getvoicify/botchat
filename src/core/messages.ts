@@ -111,8 +111,6 @@ export class MessageService {
     return this.store.countMessages(this.rooms.get(roomId).id);
   }
 
-  // Resolved before the message is inserted, so a message can never reference an
-  // attachment that is not there.
   #resolve(refs: AttachmentRef[]): Attachment[] {
     return refs.map((ref) => {
       const filename = requiredText(ref?.filename, "attachment filename");
@@ -122,8 +120,8 @@ export class MessageService {
     });
   }
 
-  // One query for the whole page: per-message reads would be 200 extra round
-  // trips at the default page size.
+  // One query for the whole page: reading each message's attachments on its own
+  // would be a round trip per message.
   #withAttachments(page: StoredMessage[]): Message[] {
     if (page.length === 0) return [];
     const byMessage = this.store.attachmentsForMessages(page.map((m) => m.seq));

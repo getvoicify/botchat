@@ -120,12 +120,6 @@ const sawMarker = (page: Page, marker: string, timeoutMs: number): Promise<boole
     .then(() => true)
     .catch(() => false);
 
-/**
- * A socket that opens on a room with more history than one backlog batch is
- * handed the oldest batch, not the newest, and advances one batch per emit. So
- * "caught up" is not a state a page reaches by waiting — it has to be driven,
- * and how many posts that takes is itself a measurement.
- */
 async function catchUp(
   page: Page,
   url: string,
