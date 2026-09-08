@@ -44,8 +44,42 @@ test("renders emphasis and headings", () => {
 });
 
 test("renders an unhandled construct as its own text rather than dropping it", () => {
+  const markup = html('[the docs]: https://example.com/docs "reference"');
+  expect(markup).toContain("[the docs]: https://example.com/docs");
+});
+
+test("renders a markdown table as a table", () => {
+  const markup = html("| step | status |\n| --- | --- |\n| collect | done |\n| render | pending |");
+  expect(markup).toContain("<table>");
+  expect(markup).toContain("<thead>");
+  expect(markup).toContain("<tbody>");
+  expect(markup).toMatch(/<th[^>]*>step<\/th>/);
+  expect(markup).toMatch(/<td[^>]*>pending<\/td>/);
+  expect(markup).not.toContain("| --- |");
+});
+
+test("renders formatting inside a table cell", () => {
+  const markup = html("| tokens |\n| --- |\n| **231** |");
+  expect(markup).toContain("<strong>231</strong>");
+  expect(markup).not.toContain("**231**");
+});
+
+test("applies column alignment from the delimiter row", () => {
+  const markup = html("| a | b | c |\n| :-- | :-: | --: |\n| 1 | 2 | 3 |");
+  expect(markup).toContain("text-align:left");
+  expect(markup).toContain("text-align:center");
+  expect(markup).toContain("text-align:right");
+});
+
+test("renders a table with no body rows without throwing", () => {
+  const markup = html("| a | b |\n| - | - |");
+  expect(markup).toContain("<table>");
+  expect(markup).toMatch(/<th[^>]*>a<\/th>/);
+});
+
+test("keeps a wide table in a container that can scroll on its own", () => {
   const markup = html("| a | b |\n| - | - |\n| 1 | 2 |");
-  expect(markup).toContain("| a | b |");
+  expect(markup).toMatch(/<div class="table-scroll">\s*<table>/);
 });
 
 test("leaves an html tag in a message as visible text", () => {

@@ -44,9 +44,42 @@ function renderBlock(token: Token, key: number): ReactNode {
         <ul key={key}>{items}</ul>
       );
     }
+    case "table": {
+      const columns = token.align ?? [];
+      return (
+        <div className="table-scroll" key={key}>
+          <table>
+            <thead>
+              <tr>
+                {token.header.map((cell: Tokens.TableCell, index: number) => (
+                  <th key={index} style={alignment(columns[index])}>
+                    {renderInline(cell.tokens ?? [])}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {token.rows.map((row: Tokens.TableCell[], rowIndex: number) => (
+                <tr key={rowIndex}>
+                  {row.map((cell, index) => (
+                    <td key={index} style={alignment(columns[index])}>
+                      {renderInline(cell.tokens ?? [])}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
     default:
       return <p key={key}>{token.raw}</p>;
   }
+}
+
+function alignment(align: "left" | "center" | "right" | null | undefined) {
+  return align ? { textAlign: align } : undefined;
 }
 
 function renderInline(tokens: Token[]): ReactNode[] {
