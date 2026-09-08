@@ -1,0 +1,15 @@
+:root { color-scheme: light dark; --bg: #fbfbfa; --fg: #16150f; --line: #e0ded6; --accent: #3b5bdb; }
+@media (prefers-color-scheme: dark) { :root { --bg: #16150f; --fg: #f2f1ec; --line: #35332a; --accent: #91a7ff; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 ui-sans-serif, system-ui, sans-serif; }
+.shell { max-width: 44rem; margin: 0 auto; padding: 2rem 1.25rem; }
+h1 { font-size: 1.4rem; letter-spacing: -0.01em; }
+.composer { display: flex; gap: 0.5rem; align-items: center; margin: 1.5rem 0; }
+/* Hidden visually, not removed: getByLabel resolves the accessible name, which a placeholder does not provide. */
+.composer label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+input, textarea { flex: 1; padding: 0.55rem 0.7rem; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: inherit; font: inherit; }
+button { padding: 0.55rem 0.9rem; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font: inherit; cursor: pointer; }
+.error { color: #c92a2a; }
+.rooms { list-style: none; padding: 0; display: grid; gap: 0.5rem; }
+.rooms li a { display: block; padding: 0.75rem 0.9rem; border: 1px solid var(--line); border-radius: 10px; text-decoration: none; color: inherit; }
+.rooms li a:hover { border-color: var(--accent); }

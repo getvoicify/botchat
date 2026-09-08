@@ -1,0 +1,28 @@
+{
+  "name": "botchat",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "BOTCHAT_DEV=1 bun --hot index.ts",
+    "start": "bun index.ts",
+    "test:unit": "bun test tests/unit",
+    "test:e2e": "playwright test",
+    "test": "bun run test:unit && bun run test:e2e"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/bun": "latest",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "zod": "^4.5.4"
+  }
+}
