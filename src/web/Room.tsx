@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { postJson } from "./api.ts";
+import { getJson, postJson } from "./api.ts";
 import { parseDraft } from "./draft.ts";
 
 type Attachment = { blobId: string; filename: string; mime: string; size: number };
+
+type Participant = { id: string; name: string; kind: "human" | "bot" };
+
+type RoomDetail = { name: string; topic: string | null; participants: Participant[] };
 
 type Message = {
   seq: number;
@@ -28,9 +32,14 @@ export function Room({ roomId }: { roomId: string }) {
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState<Attachment[]>([]);
   const [connection, setConnection] = useState<"open" | "closed">("closed");
+  const [detail, setDetail] = useState<RoomDetail | null>(null);
+  const [inviting, setInviting] = useState(false);
   const cursor = useRef(0);
   const me = useRef(displayName());
   const bottom = useRef<HTMLDivElement>(null);
+  const known = useRef(new Set<string>());
+  const refreshing = useRef(false);
+  const kinds = new Map((detail?.participants ?? []).map((p) => [p.name, p.kind]));
 
   const append = (incoming: Message) =>
     setMessages((current) => {
@@ -45,6 +54,21 @@ export function Room({ roomId }: { roomId: string }) {
     let retries = 0;
     let timer: ReturnType<typeof setTimeout>;
 
+    const refreshRoom = () => {
+      if (refreshing.current) return;
+      refreshing.current = true;
+      getJson<RoomDetail>(`/api/rooms/${roomId}`)
+        .then((fetched) => {
+          if (disposed) return;
+          known.current = new Set(fetched.participants.map((p) => p.name));
+          setDetail(fetched);
+        })
+        .catch(() => {})
+        .finally(() => {
+          refreshing.current = false;
+        });
+    };
+
     const connect = () => {
       if (disposed) return;
       socket = new WebSocket(
@@ -56,7 +80,9 @@ export function Room({ roomId }: { roomId: string }) {
       };
       socket.onmessage = (event) => {
         const frame = JSON.parse(event.data);
-        if (frame.type === "message") append(frame.message);
+        if (frame.type !== "message") return;
+        append(frame.message);
+        if (!known.current.has(frame.message.author)) refreshRoom();
       };
       socket.onclose = (event) => {
         setConnection("closed");
@@ -67,6 +93,7 @@ export function Room({ roomId }: { roomId: string }) {
       };
     };
 
+    refreshRoom();
     connect();
     return () => {
       disposed = true;
@@ -120,10 +147,49 @@ export function Room({ roomId }: { roomId: string }) {
       <p className="crumbs">
         <a href="/">all rooms</a>
       </p>
+      {detail ? (
+        <header className="room-header">
+          <h1>{detail.name}</h1>
+          {detail.topic ? (
+            <p className="topic" data-testid="topic">
+              {detail.topic}
+            </p>
+          ) : null}
+          <ul className="roster" data-testid="roster">
+            {detail.participants.map((participant) => (
+              <li key={participant.id}>
+                {participant.name}
+                {participant.kind === "bot" ? <span className="tag">bot</span> : null}
+              </li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            className="invite-toggle"
+            aria-expanded={inviting}
+            onClick={() => setInviting((open) => !open)}
+          >
+            Invite a bot
+          </button>
+          {inviting ? (
+            <div className="invite" data-testid="invite">
+              <code>{`claude mcp add --transport http botchat ${location.origin}/mcp`}</code>
+              <p>
+                Then ask it to join room <code>{roomId}</code>.
+              </p>
+            </div>
+          ) : null}
+        </header>
+      ) : null}
       <ol className="transcript" data-testid="transcript" data-connection={connection}>
         {messages.map((message) => (
-          <li key={message.seq} className={`message message-${message.kind}`}>
+          <li
+            key={message.seq}
+            className={`message message-${message.kind}`}
+            data-kind={kinds.get(message.author) ?? "human"}
+          >
             <span className="author">{message.author}</span>
+            {kinds.get(message.author) === "bot" ? <span className="tag">bot</span> : null}
             {message.lang ? (
               <span className="lang" data-testid="lang">
                 {message.lang}
