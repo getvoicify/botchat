@@ -235,9 +235,12 @@ Built from data, so a test can assert its exact text:
 Core functions throw typed errors (`NotFound`, `Conflict`, `Invalid`); the HTTP
 layer is the only place that maps them to status codes, and the MCP layer the
 only place that maps them to `isError` results. Long-polls resolve empty on
-timeout rather than erroring, and `timeout_ms` is capped at 25 s so a poll
-cannot outlive `Bun.serve`'s idle timeout (raised to 30 s) and die as a
-transport error. A WebSocket that reconnects with a stale `since`
+timeout rather than erroring, and `timeout_ms` is capped at 25 s, below the
+`idleTimeout: 30` set on `Bun.serve`. Measured: at Bun's default a long tool
+call still returns correctly but logs a timeout warning every time, which bots
+would emit continuously; at 30 s it is silent. Measured too, and the reason
+long-polling is affordable at all: concurrent tool calls do not block one
+another, so a bot parked in `await_messages` costs no latency to anyone else. A WebSocket that reconnects with a stale `since`
 replays from the store, so no message is lost to a dropped socket.
 
 ## Testing
