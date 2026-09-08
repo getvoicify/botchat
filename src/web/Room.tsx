@@ -44,7 +44,6 @@ export function Room({ roomId }: { roomId: string }) {
   const me = useRef(displayName());
   const transcript = useRef<HTMLOListElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
-  const following = useRef(true);
   const known = useRef(new Set<string>());
   const refreshing = useRef(false);
   const kinds = new Map((detail?.participants ?? []).map((p) => [p.name, p.kind]));
@@ -119,10 +118,16 @@ export function Room({ roomId }: { roomId: string }) {
     };
   }, [roomId]);
 
+  // Read while the DOM still holds the previous render: once the new message is committed
+  // scrollHeight has already grown, and the browser delivers the reader's own scroll event
+  // a frame later — too late for a message that lands in between.
+  const wasAtBottom = transcript.current ? atBottom(transcript.current) : true;
+
   useLayoutEffect(() => {
     const el = transcript.current;
-    if (!el || !following.current) return;
-    el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    if (wasAtBottom) el.scrollTop = el.scrollHeight;
+    setBehind(!atBottom(el));
   }, [messages.length]);
 
   useLayoutEffect(() => {
@@ -135,15 +140,13 @@ export function Room({ roomId }: { roomId: string }) {
   function trackPosition() {
     const el = transcript.current;
     if (!el) return;
-    following.current = atBottom(el);
-    setBehind(!following.current);
+    setBehind(!atBottom(el));
   }
 
   function jumpToLatest() {
     const el = transcript.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-    following.current = true;
     setBehind(false);
   }
 
