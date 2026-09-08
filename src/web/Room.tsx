@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { getJson, postJson } from "./api.ts";
+import { CodeBlock } from "./CodeBlock.tsx";
 import { parseDraft } from "./draft.ts";
+import { renderMarkdown } from "./markdown.tsx";
 
 type Attachment = { blobId: string; filename: string; mime: string; size: number };
 
@@ -229,15 +231,10 @@ export function Room({ roomId }: { roomId: string }) {
             >
               <span className="author">{message.author}</span>
               {kinds.get(message.author) === "bot" ? <span className="tag">bot</span> : null}
-              {message.lang ? (
-                <span className="lang" data-testid="lang">
-                  {message.lang}
-                </span>
-              ) : null}
               {message.kind === "code" ? (
-                <pre>
-                  <code>{message.body}</code>
-                </pre>
+                <CodeBlock code={message.body} lang={message.lang} />
+              ) : message.kind === "text" ? (
+                <div className="body">{renderMarkdown(message.body)}</div>
               ) : (
                 <p>{message.body}</p>
               )}

@@ -38,8 +38,39 @@ button { padding: 0.55rem 0.9rem; border: 0; border-radius: 8px; background: var
 .author { font-size: 0.8rem; font-weight: 600; opacity: 0.75; }
 .lang { margin-left: 0.4rem; padding: 0.05rem 0.35rem; border: 1px solid var(--line); border-radius: 999px; font-size: 0.7rem; opacity: 0.7; }
 .reconnecting { margin: 0.75rem 0 0; font-size: 0.85rem; opacity: 0.7; }
-pre { margin: 0.35rem 0 0; }
-pre code { display: block; padding: 0.6rem 0.7rem; border-radius: 8px; background: color-mix(in srgb, var(--fg) 8%, transparent); font: 13px/1.5 ui-monospace, SFMono-Regular, monospace; overflow-x: auto; }
+pre { margin: 0; }
+pre code { display: block; padding: 0.6rem 0.7rem; border-radius: 0 0 8px 8px; background: color-mix(in srgb, var(--fg) 8%, transparent); font: 13px/1.5 ui-monospace, SFMono-Regular, monospace; overflow-x: auto; }
+.code-block { margin: 0.4rem 0; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+.code-bar { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.2rem 0.3rem 0.2rem 0.6rem; background: color-mix(in srgb, var(--fg) 4%, transparent); border-bottom: 1px solid var(--line); }
+.code-bar .lang { margin: 0; border: 0; padding: 0; font-size: 0.7rem; letter-spacing: 0.04em; opacity: 0.6; }
+.copy { padding: 0.15rem 0.45rem; background: none; color: inherit; font-size: 0.72rem; opacity: 0.7; }
+.copy:hover { opacity: 1; background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.body > :first-child { margin-top: 0; }
+.body > :last-child { margin-bottom: 0; }
+.body p { margin: 0.15rem 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.body h1, .body h2, .body h3, .body h4, .body h5, .body h6 { margin: 0.5rem 0 0.25rem; font-size: 1.05rem; }
+.body ul, .body ol { margin: 0.3rem 0; padding-left: 1.3rem; }
+.body li { margin: 0.1rem 0; }
+.body blockquote { margin: 0.3rem 0; padding-left: 0.7rem; border-left: 3px solid var(--line); opacity: 0.85; }
+.body code { padding: 0.05rem 0.3rem; border-radius: 5px; background: color-mix(in srgb, var(--fg) 8%, transparent); font: 0.87em ui-monospace, SFMono-Regular, monospace; }
+.body a { color: var(--accent); }
+.body hr { border: 0; border-top: 1px solid var(--line); margin: 0.6rem 0; }
+.hljs-keyword, .hljs-selector-tag, .hljs-literal { color: #c678dd; }
+.hljs-string, .hljs-regexp, .hljs-addition { color: #98c379; }
+.hljs-number, .hljs-symbol { color: #d19a66; }
+.hljs-comment, .hljs-quote, .hljs-deletion { color: #7f848e; font-style: italic; }
+.hljs-title, .hljs-title.function_, .hljs-section { color: #61afef; }
+.hljs-attr, .hljs-attribute, .hljs-variable, .hljs-template-variable { color: #e06c75; }
+.hljs-built_in, .hljs-type, .hljs-class .hljs-title { color: #e5c07b; }
+@media (prefers-color-scheme: light) {
+  .hljs-keyword, .hljs-selector-tag, .hljs-literal { color: #a626a4; }
+  .hljs-string, .hljs-regexp, .hljs-addition { color: #3f8b2f; }
+  .hljs-number, .hljs-symbol { color: #b76b01; }
+  .hljs-comment, .hljs-quote, .hljs-deletion { color: #7c7a70; }
+  .hljs-title, .hljs-title.function_, .hljs-section { color: #2f5fd0; }
+  .hljs-attr, .hljs-attribute, .hljs-variable, .hljs-template-variable { color: #c1382b; }
+  .hljs-built_in, .hljs-type, .hljs-class .hljs-title { color: #8a6d1f; }
+}
 .composer input[type=file] { flex: 0 1 auto; padding: 0.35rem; border: 0; }
 .pending { list-style: none; margin: 1rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .pending li { display: flex; align-items: center; gap: 0.3rem; padding: 0.15rem 0.3rem 0.15rem 0.6rem; border: 1px solid var(--line); border-radius: 999px; font-size: 0.85rem; }
