@@ -105,6 +105,97 @@ bun --hot ./index.ts
 
 For more information, read the Bun API docs in `node_modules/bun-types/docs/**.mdx`.
 
+# botchat — project facts worth not re-learning
+
+## Append-only needs three triggers and a pragma, not two triggers
+
+`UPDATE`/`DELETE` triggers on `messages` are not enough. `INSERT OR REPLACE`
+slips past them entirely unless `PRAGMA recursive_triggers = ON`, because
+REPLACE's implicit delete fires DELETE triggers only when recursive triggers are
+enabled. Verified against SQLite 3.51.0: without the pragma the upsert returns
+`{changes: 1}` and the row changes. `message_attachments` needs the same pair —
+it is history too.
+
+The subtler hole was `participants`. `author` is joined at read time, so
+`UPDATE participants SET name = ...` rewrote the author of every message that
+participant ever sent. `participants_no_rename` closes it. Immutable history
+that lets you rewrite the byline is not immutable.
+
+Pragmas are per-connection and silently absent if not re-applied — only
+`journal_mode` persists in the file. `openDatabase` is the one place they are
+set, and a test reads them back.
+
+## `seq` is the only cursor, and two rules keep it honest
+
+WAL allows one writer and `bun:sqlite` is one synchronous connection, so no
+reader can see seq N+1 before N. That holds only if:
+
+1. **`bus.emit` runs after the write returns**, never inside a transaction — a
+   rollback would otherwise announce a seq no reader can find.
+2. **A subscriber reads its backlog and registers its listener with no `await`
+   between them.** This is why `ws.open` is not `async`. A commit landing in
+   that gap is delivered by neither path, and no test catches it under light
+   load — the structural rule is the guard.
+
+Because resume is by seq, dropping a socket is a cost, never a correctness
+event. That is what makes reaping idle sockets safe.
+
+## Measured, so stop guessing
+
+At 100,000 messages across 20 rooms: every query p95 under 0.4 ms except the
+room list with per-room counts at 5.8 ms. Post → rendered in another browser,
+timed in the browser over 40 samples: **p50 2.8 ms, p95 4.2 ms**. The storage
+layer is not the bottleneck and does not need indexes beyond
+`messages (room_id, seq)`. Measure before optimising anything here.
+
+A blocked MCP tool call does not block the server: a 400 ms call issued
+alongside an instant one finished in 403 ms total. That is what makes
+`await_messages` affordable.
+
+## MCP specifics that cost time to establish
+
+The SDK's `exports` map lists `.`, `./client`, `./server`, `./validation`,
+`./experimental` **plus a `./*` wildcard**. The named barrels carry only the
+low-level `Server`/`Client`; `McpServer` and every transport resolve through the
+wildcard. So `@modelcontextprotocol/sdk/server/mcp.js` is correct and
+`@modelcontextprotocol/sdk/server` is not — do not "simplify" these imports.
+
+A fresh `McpServer` + `WebStandardStreamableHTTPServerTransport({
+sessionIdGenerator: undefined, enableJsonResponse: true })` per request works
+and needs no session handling. Set `idleTimeout: 30` on `Bun.serve`: at the
+default, long tool calls still return correctly but log
+`[Bun.serve]: request timed out after 10 seconds` every time, and bots would
+print that continuously.
+
+A thrown `NotFound` from a tool already surfaces as `isError: true` with the
+message — no per-tool catching needed.
+
+## Testing this repo
+
+`tests/e2e/**` imports WITHOUT `.ts` extensions and never imports from `src/`;
+`src/**` and `tests/unit/**` DO use `.ts` extensions. Two loaders, kept apart.
+`bun test` bare would run the Playwright specs — always `bun test tests/unit`.
+
+Playwright workers are capped at 4 deliberately. Under a forced fault (14
+workers, `--repeat-each=2`) the suite failed 7 of 42 on 30-second timeouts;
+capping workers fixed it, and raising timeouts would only have hidden the next
+real failure. Every spawned child process needs an `afterEach` that kills it —
+a leaked watcher reconnecting against a dead port measurably loaded the machine
+and made later runs flakier.
+
+Every test server spawns its own `bun index.ts` and is discovered by parsing the
+`BOTCHAT_LISTENING <url>` line from stdout. Never remove that line.
+
+## Orchestration
+
+Implementation subagents share this working tree. Stage by explicit path and
+commit with a pathspec (`git commit -m "…" -- <paths>`), because `git commit`
+otherwise commits the whole index and will swallow another agent's staged,
+half-written red test. This happened once; the repair is
+`git reset --soft HEAD~1 && git restore --staged <file> && git commit …` as one
+atomic command.
+
+
 # context-mode — MANDATORY routing rules
 
 You have context-mode MCP tools available. These rules are NOT optional — they protect your context window from flooding. A single unrouted command can dump 56 KB into context and waste the entire session.
