@@ -2,9 +2,9 @@
 @media (prefers-color-scheme: dark) { :root { --bg: #16150f; --fg: #f2f1ec; --line: #35332a; --accent: #91a7ff; } }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 ui-sans-serif, system-ui, sans-serif; }
-.shell { max-width: 44rem; margin: 0 auto; padding: 2rem 1.25rem; }
+.shell { max-width: 44rem; margin: 0 auto; padding: 2rem 1.25rem 0; height: 100vh; height: 100svh; display: flex; flex-direction: column; }
 h1 { font-size: 1.4rem; letter-spacing: -0.01em; }
-.composer { display: flex; gap: 0.5rem; align-items: flex-end; margin: 1.5rem 0; }
+.composer { flex: 0 0 auto; display: flex; gap: 0.5rem; align-items: flex-end; margin: 0.9rem 0 1.25rem; }
 .composer textarea { resize: none; overflow-y: auto; line-height: 1.45; }
 /* Hidden visually, not removed: getByLabel resolves the accessible name, which a placeholder does not provide. */
 .composer label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
@@ -27,7 +27,11 @@ button { padding: 0.55rem 0.9rem; border: 0; border-radius: 8px; background: var
 .invite { margin-top: 0.6rem; display: grid; gap: 0.35rem; font-size: 0.85rem; }
 .invite > code { display: block; padding: 0.5rem 0.6rem; border: 1px solid var(--line); border-radius: 8px; background: color-mix(in srgb, var(--fg) 6%, transparent); font: 12px/1.5 ui-monospace, SFMono-Regular, monospace; overflow-x: auto; }
 .invite p { margin: 0; opacity: 0.75; }
-.transcript { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.6rem; }
+.stream { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* min-height: 0 is load-bearing: a flex child defaults to min-height: auto, grows to fit its
+   content, and overflow-y then has nothing to scroll. */
+.transcript { flex: 1; min-height: 0; overflow-y: auto; list-style: none; margin: 0; padding: 0; display: grid; gap: 0.6rem; align-content: start; }
+.jump { position: absolute; left: 50%; bottom: 0.7rem; transform: translateX(-50%); padding: 0.35rem 0.8rem; border-radius: 999px; box-shadow: 0 2px 10px rgb(0 0 0 / 0.25); font-size: 0.8rem; }
 .message { padding: 0.6rem 0.8rem; border: 1px solid var(--line); border-radius: 10px; }
 .message p { margin: 0.15rem 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .message-system { opacity: 0.7; font-style: italic; }
