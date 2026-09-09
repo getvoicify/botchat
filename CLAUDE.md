@@ -212,6 +212,42 @@ is actually crossed: the backlog regression test needs ≥1000 messages, since a
 and wrong (it is a prefix of `message 101`). Make fixture bodies
 self-disambiguating instead.
 
+## Stubbing a browser API can hide the code you meant to test
+
+`tests/e2e/chime.spec.ts` replaces `AudioContext` wholesale, so it never runs
+`src/web/chime.ts`. Proven, not assumed: setting the gain ramp's target to `0`
+throws a real `RangeError` from Web Audio — *"The float target value provided
+(0) should not be in the range (-1.40130e-45, 1.40130e-45)"* — and **all five
+stubbed tests stayed green**. `tests/e2e/chime-audio.spec.ts` closes it by
+*wrapping* `AudioContext.prototype.createOscillator` instead of replacing it, so
+the real graph is built and played while the tones are still observable.
+
+Two things that spec needs, both learned the hard way:
+
+- `--autoplay-policy=no-user-gesture-required`, via file-scoped
+  `test.use({ launchOptions: { args: [...] } })`. A second Playwright project
+  would need `testMatch`/`testIgnore` on both entries.
+- `--mute-audio`. Without it two workers competing for a real output device
+  crash the renderer with `session closed`.
+
+Asserting *between* two posts also costs enough page round-trips to outrun the
+chime's own 2-second rate-limit gap — fire the burst with `Promise.all` and
+assert after.
+
+`document.hasFocus()` cannot be driven in Playwright at all. Probed headless and
+headed: opening a second page and calling `bringToFront()` leaves it `true` on
+both pages in every combination. The focus rule is held by unit tests only; the
+e2e specs stub it.
+
+## Read the machine's load before believing a flake
+
+A "narrowing margin" on e2e timing was mostly a game: load average 56 with
+Civilization VII at 464% CPU. Full runs were 31.3 s cold and 14.0 s warm with no
+timeout, while isolated runs on the same loaded machine intermittently hit the
+30 s ceiling with no assertion error at all (browser launch is charged to the
+first test). Check `uptime` and `ps -Ao pcpu,comm -r | head` before concluding
+the suite has a problem — and before raising any timeout.
+
 ## Mutation testing finds what review misses
 
 Two blind spots survived every review and were found only by breaking the code
