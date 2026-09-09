@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { getJson, postJson } from "./api.ts";
 import { AttachmentView, type Attachment } from "./AttachmentView.tsx";
+import { type Chime, createChime, shouldChime } from "./chime.ts";
 import { CodeBlock } from "./CodeBlock.tsx";
 import { parseDraft } from "./draft.ts";
 import { renderMarkdown } from "./markdown.tsx";
@@ -21,6 +22,22 @@ type Message = {
 
 const NEAR_BOTTOM_PX = 120;
 
+const SOUND_KEY = "botchat.sound";
+
+function readMuted(): boolean {
+  try {
+    return localStorage.getItem(SOUND_KEY) === "off";
+  } catch {
+    return false;
+  }
+}
+
+function rememberMuted(muted: boolean) {
+  try {
+    localStorage.setItem(SOUND_KEY, muted ? "off" : "on");
+  } catch {}
+}
+
 const atBottom = (el: Element) => el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
 
 function displayName(): string {
@@ -40,6 +57,10 @@ export function Room({ roomId }: { roomId: string }) {
   const [detail, setDetail] = useState<RoomDetail | null>(null);
   const [inviting, setInviting] = useState(false);
   const [behind, setBehind] = useState(false);
+  const [muted, setMuted] = useState(readMuted);
+  const mutedNow = useRef(muted);
+  const lastChimedAt = useRef(0);
+  const chime = useRef<Chime | null>(null);
   const cursor = useRef(0);
   const me = useRef(displayName());
   const transcript = useRef<HTMLOListElement>(null);
@@ -76,6 +97,25 @@ export function Room({ roomId }: { roomId: string }) {
         });
     };
 
+    const chimeFor = (author: string) => {
+      const now = Date.now();
+      const decision = shouldChime({
+        author,
+        me: me.current,
+        // Focus, not visibility: a room sitting open beside an editor reports
+        // visibilityState "visible" while hasFocus() is false, and that unread
+        // room next to the thing you are working in is the case worth a sound.
+        focused: document.hasFocus(),
+        muted: mutedNow.current,
+        now,
+        lastPlayedAt: lastChimedAt.current,
+      });
+      if (!decision) return;
+      lastChimedAt.current = now;
+      chime.current ??= createChime();
+      chime.current.play();
+    };
+
     const connect = () => {
       if (disposed) return;
       socket = new WebSocket(
@@ -90,6 +130,7 @@ export function Room({ roomId }: { roomId: string }) {
         if (frame.type !== "message") return;
         append(frame.message);
         if (!known.current.has(frame.message.author)) refreshRoom();
+        chimeFor(frame.message.author);
       };
       socket.onclose = (event) => {
         setConnection("closed");
@@ -141,6 +182,13 @@ export function Room({ roomId }: { roomId: string }) {
     const el = transcript.current;
     if (!el) return;
     setBehind(!atBottom(el));
+  }
+
+  function toggleSound() {
+    const next = !mutedNow.current;
+    mutedNow.current = next;
+    rememberMuted(next);
+    setMuted(next);
   }
 
   function jumpToLatest() {
@@ -209,14 +257,44 @@ export function Room({ roomId }: { roomId: string }) {
               </li>
             ))}
           </ul>
-          <button
-            type="button"
-            className="invite-toggle"
-            aria-expanded={inviting}
-            onClick={() => setInviting((open) => !open)}
-          >
-            Invite a bot
-          </button>
+          <div className="header-actions">
+            <button
+              type="button"
+              className="invite-toggle"
+              aria-expanded={inviting}
+              onClick={() => setInviting((open) => !open)}
+            >
+              Invite a bot
+            </button>
+            <button
+              type="button"
+              className="sound-toggle"
+              data-testid="sound-toggle"
+              aria-label={muted ? "Unmute notifications" : "Mute notifications"}
+              onClick={toggleSound}
+            >
+              <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">
+                <path d="M4 9.5v5h3.6L12 18.6V5.4L7.6 9.5H4z" fill="currentColor" />
+                {muted ? (
+                  <path
+                    d="M16 9.5l4.5 5m0-5l-4.5 5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                    strokeLinecap="round"
+                  />
+                ) : (
+                  <path
+                    d="M15.2 9.2a4 4 0 0 1 0 5.6M17.9 6.9a7.6 7.6 0 0 1 0 10.2"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                    strokeLinecap="round"
+                  />
+                )}
+              </svg>
+            </button>
+          </div>
           {inviting ? (
             <div className="invite" data-testid="invite">
               <code>{`claude mcp add --transport http botchat ${location.origin}/mcp`}</code>

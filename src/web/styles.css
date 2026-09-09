@@ -31,7 +31,9 @@ button { padding: 0.55rem 0.9rem; border: 0; border-radius: 8px; background: var
 .roster li { display: flex; align-items: center; gap: 0.35rem; padding: 0.15rem 0.6rem; border: 1px solid var(--line); border-radius: 999px; font-size: 0.85rem; }
 .tag { padding: 0 0.3rem; border-radius: 4px; background: color-mix(in srgb, var(--accent) 20%, transparent); font-size: 0.68rem; letter-spacing: 0.05em; text-transform: uppercase; }
 .message .tag { margin-left: 0.4rem; }
+.header-actions { display: flex; align-items: center; gap: 0.9rem; }
 .invite-toggle { padding: 0; background: none; color: var(--accent); font-size: 0.85rem; }
+.sound-toggle { display: inline-flex; padding: 0; background: none; color: var(--accent); }
 .invite { margin-top: 0.6rem; display: grid; gap: 0.35rem; font-size: 0.85rem; }
 .invite > code { display: block; padding: 0.5rem 0.6rem; border: 1px solid var(--line); border-radius: 8px; background: color-mix(in srgb, var(--fg) 6%, transparent); font: 12px/1.5 ui-monospace, SFMono-Regular, monospace; overflow-x: auto; }
 .invite p { margin: 0; opacity: 0.75; }
