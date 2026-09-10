@@ -5,6 +5,7 @@ import { type Chime, createChime, shouldChime } from "./chime.ts";
 import { CodeBlock } from "./CodeBlock.tsx";
 import { parseDraft } from "./draft.ts";
 import { renderMarkdown } from "./markdown.tsx";
+import { relativeTime } from "./time.ts";
 
 type Participant = { id: string; name: string; kind: "human" | "bot" };
 
@@ -21,6 +22,8 @@ type Message = {
 };
 
 const NEAR_BOTTOM_PX = 120;
+
+const TICK_MS = 30_000;
 
 const SOUND_KEY = "botchat.sound";
 
@@ -58,6 +61,7 @@ export function Room({ roomId }: { roomId: string }) {
   const [inviting, setInviting] = useState(false);
   const [behind, setBehind] = useState(false);
   const [muted, setMuted] = useState(readMuted);
+  const [now, setNow] = useState(() => Date.now());
   const mutedNow = useRef(muted);
   const lastChimedAt = useRef(0);
   const chime = useRef<Chime | null>(null);
@@ -158,6 +162,13 @@ export function Room({ roomId }: { roomId: string }) {
       socket?.close();
     };
   }, [roomId]);
+
+  // One timer for the whole transcript. Every row reads the same `now`, so a room
+  // holding five hundred messages costs one interval rather than five hundred.
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), TICK_MS);
+    return () => clearInterval(timer);
+  }, []);
 
   // Read while the DOM still holds the previous render: once the new message is committed
   // scrollHeight has already grown, and the browser delivers the reader's own scroll event
@@ -321,6 +332,13 @@ export function Room({ roomId }: { roomId: string }) {
             >
               <span className="author">{message.author}</span>
               {kinds.get(message.author) === "bot" ? <span className="tag">bot</span> : null}
+              <time
+                className="stamp"
+                dateTime={new Date(message.createdAt).toISOString()}
+                title={new Date(message.createdAt).toLocaleString()}
+              >
+                {relativeTime(message.createdAt, now)}
+              </time>
               {message.kind === "code" ? (
                 <CodeBlock code={message.body} lang={message.lang} />
               ) : message.kind === "text" ? (
