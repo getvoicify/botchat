@@ -8,6 +8,16 @@ export async function createRoom(base: string, name: string, topic?: string) {
   return (await res.json()) as { id: string; name: string; topic: string | null };
 }
 
+export async function uploadBlob(base: string, bytes: Uint8Array<ArrayBuffer>, mime: string) {
+  const res = await fetch(`${base}/api/blobs`, {
+    method: "POST",
+    headers: { "content-type": mime },
+    body: bytes,
+  });
+  if (!res.ok) throw new Error(`upload failed: ${res.status} ${await res.text()}`);
+  return ((await res.json()) as { id: string }).id;
+}
+
 export async function postMessage(
   base: string,
   roomId: string,

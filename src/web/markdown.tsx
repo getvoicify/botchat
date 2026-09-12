@@ -1,5 +1,6 @@
 import { marked, type Token, type Tokens } from "marked";
 import { Fragment, type ReactNode } from "react";
+import { ChatImage } from "./ChatImage.tsx";
 import { CodeBlock } from "./CodeBlock.tsx";
 
 export function renderMarkdown(source: string): ReactNode {
@@ -102,6 +103,8 @@ function renderInline(tokens: Token[]): ReactNode[] {
             {renderInline(token.tokens ?? [])}
           </a>
         );
+      case "image":
+        return <ChatImage key={key} src={token.href} alt={token.text} />;
       case "br":
         return <br key={key} />;
       default:

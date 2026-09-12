@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
-import { createRoom, postMessage } from "./api";
+import { createRoom, postMessage, uploadBlob } from "./api";
+import { widePng } from "./png";
 
 const UNBROKEN_TOKEN = "z9Qv7Kd2".repeat(25);
 
@@ -38,15 +39,24 @@ const SEEDS = [
 
 async function seededRoom(url: string) {
   const room = await createRoom(url, "wide");
-  for (const body of SEEDS) await postMessage(url, room.id, "ada", body, { authorKind: "bot" });
-  return room;
+  const blobId = await uploadBlob(url, widePng(), "image/png");
+  const bodies = [...SEEDS, `a screenshot far wider than the room:\n\n![wide](/api/blobs/${blobId})`];
+  for (const body of bodies) await postMessage(url, room.id, "ada", body, { authorKind: "bot" });
+  return { room, seeded: bodies.length };
 }
 
 test("keeps every message inside the width of the transcript", async ({ page, server }) => {
-  const room = await seededRoom(server.url);
+  const { room, seeded } = await seededRoom(server.url);
   await page.goto(`${server.url}/rooms/${room.id}?as=tom`);
   const transcript = page.getByTestId("transcript");
-  await expect(transcript.locator("li.message")).toHaveCount(SEEDS.length);
+  await expect(transcript.locator("li.message")).toHaveCount(seeded);
+  // Measuring before the bytes arrive measures a zero-width placeholder, which
+  // fits inside anything.
+  await expect
+    .poll(() =>
+      transcript.locator("img").first().evaluate((el) => (el as HTMLImageElement).naturalWidth),
+    )
+    .toBe(1200);
 
   const overflowing = await transcript.evaluate((root) => {
     const scrollsHorizontally = (el: Element) => {
@@ -73,7 +83,7 @@ test("scrolls a wide code block inside its card instead of widening the bubble",
   page,
   server,
 }) => {
-  const room = await seededRoom(server.url);
+  const { room } = await seededRoom(server.url);
   await page.goto(`${server.url}/rooms/${room.id}?as=tom`);
   const transcript = page.getByTestId("transcript");
   const code = transcript.locator("pre code").first();
