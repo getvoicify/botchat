@@ -1,6 +1,7 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { getJson, postJson } from "./api.ts";
 import { AttachmentView, type Attachment } from "./AttachmentView.tsx";
+import { ImageReadyProvider } from "./ChatImage.tsx";
 import { type Chime, createChime, shouldChime } from "./chime.ts";
 import { CodeBlock } from "./CodeBlock.tsx";
 import { parseDraft } from "./draft.ts";
@@ -63,6 +64,7 @@ export function Room({ roomId }: { roomId: string }) {
   const [muted, setMuted] = useState(readMuted);
   const [now, setNow] = useState(() => Date.now());
   const mutedNow = useRef(muted);
+  const behindNow = useRef(behind);
   const lastChimedAt = useRef(0);
   const chime = useRef<Chime | null>(null);
   const cursor = useRef(0);
@@ -175,11 +177,25 @@ export function Room({ roomId }: { roomId: string }) {
   // a frame later — too late for a message that lands in between.
   const wasAtBottom = transcript.current ? atBottom(transcript.current) : true;
 
+  const markBehind = useCallback((value: boolean) => {
+    behindNow.current = value;
+    setBehind(value);
+  }, []);
+
+  // An image finishes loading long after the message carrying it was scrolled
+  // to, and the transcript grows as it does, leaving a reader who was following
+  // the room short of the bottom.
+  const imageReady = useCallback(() => {
+    const el = transcript.current;
+    if (!el || behindNow.current) return;
+    el.scrollTop = el.scrollHeight;
+  }, []);
+
   useLayoutEffect(() => {
     const el = transcript.current;
     if (!el) return;
     if (wasAtBottom) el.scrollTop = el.scrollHeight;
-    setBehind(!atBottom(el));
+    markBehind(!atBottom(el));
   }, [messages.length]);
 
   useLayoutEffect(() => {
@@ -192,7 +208,7 @@ export function Room({ roomId }: { roomId: string }) {
   function trackPosition() {
     const el = transcript.current;
     if (!el) return;
-    setBehind(!atBottom(el));
+    markBehind(!atBottom(el));
   }
 
   function toggleSound() {
@@ -206,7 +222,7 @@ export function Room({ roomId }: { roomId: string }) {
     const el = transcript.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-    setBehind(false);
+    markBehind(false);
   }
 
   // Uploading on selection rather than on send keeps the transfer inside the
@@ -317,45 +333,47 @@ export function Room({ roomId }: { roomId: string }) {
         </header>
       ) : null}
       <div className="stream">
-        <ol
-          className="transcript"
-          data-testid="transcript"
-          data-connection={connection}
-          ref={transcript}
-          onScroll={trackPosition}
-        >
-          {messages.map((message) => (
-            <li
-              key={message.seq}
-              className={`message message-${message.kind}`}
-              data-kind={kinds.get(message.author) ?? "human"}
-            >
-              <span className="author">{message.author}</span>
-              {kinds.get(message.author) === "bot" ? <span className="tag">bot</span> : null}
-              <time
-                className="stamp"
-                dateTime={new Date(message.createdAt).toISOString()}
-                title={new Date(message.createdAt).toLocaleString()}
+        <ImageReadyProvider value={imageReady}>
+          <ol
+            className="transcript"
+            data-testid="transcript"
+            data-connection={connection}
+            ref={transcript}
+            onScroll={trackPosition}
+          >
+            {messages.map((message) => (
+              <li
+                key={message.seq}
+                className={`message message-${message.kind}`}
+                data-kind={kinds.get(message.author) ?? "human"}
               >
-                {relativeTime(message.createdAt, now)}
-              </time>
-              {message.kind === "code" ? (
-                <CodeBlock code={message.body} lang={message.lang} />
-              ) : message.kind === "text" ? (
-                <div className="body">{renderMarkdown(message.body)}</div>
-              ) : (
-                <p>{message.body}</p>
-              )}
-              {message.attachments.length > 0 ? (
-                <ul className="attachments">
-                  {message.attachments.map((file) => (
-                    <AttachmentView key={file.blobId} file={file} />
-                  ))}
-                </ul>
-              ) : null}
-            </li>
-          ))}
-        </ol>
+                <span className="author">{message.author}</span>
+                {kinds.get(message.author) === "bot" ? <span className="tag">bot</span> : null}
+                <time
+                  className="stamp"
+                  dateTime={new Date(message.createdAt).toISOString()}
+                  title={new Date(message.createdAt).toLocaleString()}
+                >
+                  {relativeTime(message.createdAt, now)}
+                </time>
+                {message.kind === "code" ? (
+                  <CodeBlock code={message.body} lang={message.lang} />
+                ) : message.kind === "text" ? (
+                  <div className="body">{renderMarkdown(message.body)}</div>
+                ) : (
+                  <p>{message.body}</p>
+                )}
+                {message.attachments.length > 0 ? (
+                  <ul className="attachments">
+                    {message.attachments.map((file) => (
+                      <AttachmentView key={file.blobId} file={file} />
+                    ))}
+                  </ul>
+                ) : null}
+              </li>
+            ))}
+          </ol>
+        </ImageReadyProvider>
         {behind ? (
           <button type="button" className="jump" data-testid="jump-to-latest" onClick={jumpToLatest}>
             Jump to latest
