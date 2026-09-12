@@ -105,3 +105,5 @@ pre code { display: block; padding: 0.6rem 0.7rem; border-radius: 0 0 8px 8px; b
 .attachment-preview h1, .attachment-preview h2, .attachment-preview h3 { margin: 0.4rem 0 0.2rem; font-size: 1.05rem; }
 .attachments a { color: var(--accent); }
 .filesize { font-size: 0.75rem; opacity: 0.6; }
+.attachments li.attachment-image { display: block; }
+.attachment-image .caption { display: flex; align-items: baseline; gap: 0.5rem; font-size: 0.85rem; }

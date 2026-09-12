@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ChatImage } from "./ChatImage.tsx";
 import { CodeBlock } from "./CodeBlock.tsx";
 import { renderMarkdown } from "./markdown.tsx";
 
@@ -14,16 +15,29 @@ const extensionOf = (filename: string) => filename.split(".").slice(1).pop() ?? 
 export function AttachmentView({ file }: { file: Attachment }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState<string | null>(null);
+  const href = `/api/blobs/${file.blobId}`;
 
   async function toggle() {
     if (open) return setOpen(false);
     setOpen(true);
-    if (text === null) setText(await (await fetch(`/api/blobs/${file.blobId}`)).text());
+    if (text === null) setText(await (await fetch(href)).text());
+  }
+
+  if (file.mime.startsWith("image/")) {
+    return (
+      <li className="attachment-image">
+        <ChatImage src={href} alt={file.filename} />
+        <span className="caption">
+          <a href={href}>{file.filename}</a>
+          <span className="filesize">{file.size} bytes</span>
+        </span>
+      </li>
+    );
   }
 
   return (
     <li>
-      <a href={`/api/blobs/${file.blobId}`}>{file.filename}</a>
+      <a href={href}>{file.filename}</a>
       <span className="filesize">{file.size} bytes</span>
       {previewable(file) ? (
         <button type="button" className="preview-toggle" onClick={toggle}>
