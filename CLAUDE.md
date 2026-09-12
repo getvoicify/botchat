@@ -239,6 +239,33 @@ headed: opening a second page and calling `bringToFront()` leaves it `true` on
 both pages in every combination. The focus rule is held by unit tests only; the
 e2e specs stub it.
 
+## Testing images: three ways to write a test that cannot fail
+
+- **`expect(img).toBeVisible()` proves nothing.** An `<img>` with a 404 `src` is
+  still an `<img>` in the DOM. Assert `naturalWidth` equals the fixture's real
+  width — only a decoded image has one.
+- **Measuring an undecoded image measures a zero-width placeholder**, which fits
+  inside any container. So an overflow assertion must `expect.poll` on
+  `naturalWidth` *before* it measures geometry, or a wide image "passes" the
+  width invariant while it is still loading.
+- **`loading="lazy"` silently defeats a scroll test.** Scrolled to the very top,
+  an image appended at the bottom is never fetched, so its load callback never
+  fires and the test passes against any implementation. Scroll to ~400 px from
+  the bottom instead: past `NEAR_BOTTOM_PX` so the reader counts as behind, but
+  inside Chrome's lazy-load margin so the bytes actually arrive.
+
+A loading image also fights the follow-scroll: the message arrives, the
+transcript scrolls to the bottom, then the image decodes and grows the content.
+`ChatImage` fires `onReady` on load *and* error (the fallback row changes height
+too) and `Room` re-scrolls unless the reader is behind. Measured without the
+fix: 32 px short for a 48×32 PNG. Delay the blob response with `page.route` in
+the test or the race resolves before the first scroll and the test is
+meaningless.
+
+Fixtures live in `tests/e2e/png.ts` as base64 constants, not binaries — a real
+48×32 and a 1200×40. The wide one exists because a small image cannot overflow a
+640 px column, so the overflow stress case needs it.
+
 ## Read the machine's load before believing a flake
 
 A "narrowing margin" on e2e timing was mostly a game: load average 56 with
