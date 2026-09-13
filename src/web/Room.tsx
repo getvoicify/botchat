@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { getJson } from "./api.ts";
 import { AttachmentView, type Attachment } from "./AttachmentView.tsx";
 import { ImageReadyProvider } from "./ChatImage.tsx";
@@ -53,6 +53,44 @@ function displayName(): string {
   return localStorage.getItem("botchat.name") ?? "you";
 }
 
+type RowProps = {
+  message: Message;
+  authorKind: "human" | "bot";
+  roster: string[];
+  me: string;
+  now: number;
+};
+
+const MessageRow = memo(function MessageRow({ message, authorKind, roster, me, now }: RowProps) {
+  return (
+    <li className={`message message-${message.kind}`} data-kind={authorKind}>
+      <span className="author">{message.author}</span>
+      {authorKind === "bot" ? <span className="tag">bot</span> : null}
+      <time
+        className="stamp"
+        dateTime={new Date(message.createdAt).toISOString()}
+        title={new Date(message.createdAt).toLocaleString()}
+      >
+        {relativeTime(message.createdAt, now)}
+      </time>
+      {message.kind === "code" ? (
+        <CodeBlock code={message.body} lang={message.lang} />
+      ) : message.kind === "text" ? (
+        <div className="body">{renderMarkdown(message.body, { participants: roster, me })}</div>
+      ) : (
+        <p>{message.body}</p>
+      )}
+      {message.attachments.length > 0 ? (
+        <ul className="attachments">
+          {message.attachments.map((file) => (
+            <AttachmentView key={file.blobId} file={file} />
+          ))}
+        </ul>
+      ) : null}
+    </li>
+  );
+});
+
 export function Room({ roomId }: { roomId: string }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [connection, setConnection] = useState<"open" | "closed">("closed");
@@ -71,7 +109,11 @@ export function Room({ roomId }: { roomId: string }) {
   const known = useRef(new Set<string>());
   const refreshing = useRef(false);
   const kinds = new Map((detail?.participants ?? []).map((p) => [p.name, p.kind]));
-  const roster = (detail?.participants ?? []).map((p) => p.name);
+  const rosterKey = (detail?.participants ?? []).map((p) => p.name).join("\n");
+  // Keyed on the names, not on `detail`: an unknown author speaking refetches the
+  // room and hands back a fresh object listing the same people, and a roster that
+  // changes identity there misses the memo on every row for nothing.
+  const roster = useMemo(() => rosterKey.split("\n").filter((name) => name !== ""), [rosterKey]);
 
   const append = (incoming: Message) =>
     setMessages((current) => {
@@ -295,37 +337,14 @@ export function Room({ roomId }: { roomId: string }) {
             onScroll={trackPosition}
           >
             {messages.map((message) => (
-              <li
+              <MessageRow
                 key={message.seq}
-                className={`message message-${message.kind}`}
-                data-kind={kinds.get(message.author) ?? "human"}
-              >
-                <span className="author">{message.author}</span>
-                {kinds.get(message.author) === "bot" ? <span className="tag">bot</span> : null}
-                <time
-                  className="stamp"
-                  dateTime={new Date(message.createdAt).toISOString()}
-                  title={new Date(message.createdAt).toLocaleString()}
-                >
-                  {relativeTime(message.createdAt, now)}
-                </time>
-                {message.kind === "code" ? (
-                  <CodeBlock code={message.body} lang={message.lang} />
-                ) : message.kind === "text" ? (
-                  <div className="body">
-                    {renderMarkdown(message.body, { participants: roster, me: me.current })}
-                  </div>
-                ) : (
-                  <p>{message.body}</p>
-                )}
-                {message.attachments.length > 0 ? (
-                  <ul className="attachments">
-                    {message.attachments.map((file) => (
-                      <AttachmentView key={file.blobId} file={file} />
-                    ))}
-                  </ul>
-                ) : null}
-              </li>
+                message={message}
+                authorKind={kinds.get(message.author) ?? "human"}
+                roster={roster}
+                me={me.current}
+                now={now}
+              />
             ))}
           </ol>
         </ImageReadyProvider>

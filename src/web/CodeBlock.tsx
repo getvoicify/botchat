@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { highlightCode } from "./highlight.ts";
 
 export function CodeBlock({ code, lang }: { code: string; lang: string | null }) {
   const [copied, setCopied] = useState(false);
+  const highlighted = useMemo(() => highlightCode(code, lang), [code, lang]);
 
   async function copy() {
     await navigator.clipboard.writeText(code);
@@ -22,7 +23,7 @@ export function CodeBlock({ code, lang }: { code: string; lang: string | null })
       </div>
       <pre>
         {/* highlight.js escapes its input, so its output is the one thing here safe to inject. */}
-        <code dangerouslySetInnerHTML={{ __html: highlightCode(code, lang) }} />
+        <code dangerouslySetInnerHTML={{ __html: highlighted }} />
       </pre>
     </div>
   );
