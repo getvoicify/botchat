@@ -166,3 +166,39 @@ test("completes a mention typed part way through a sentence", async ({ page, ser
 
   await expect(page.getByTestId("transcript").locator(".mention")).toHaveText("@ada");
 });
+
+test("does not offer your own name", async ({ page, server }) => {
+  const room = await roomWith(server.url, ["tom", "ada"]);
+  await page.goto(`${server.url}/rooms/${room.id}?as=tom`);
+  const composer = composerOf(page);
+  await composer.click();
+  await composer.pressSequentially("@");
+
+  await expect(page.getByRole("option")).toHaveText(["ada"]);
+});
+
+test("does not open the list when only your own name matches", async ({ page, server }) => {
+  const room = await roomWith(server.url, ["tom", "ada"]);
+  await page.goto(`${server.url}/rooms/${room.id}?as=tom`);
+  const composer = composerOf(page);
+  await composer.click();
+  await composer.pressSequentially("@a");
+  await expect(page.getByRole("listbox")).toBeVisible();
+
+  await composer.press("Backspace");
+  await composer.pressSequentially("to");
+
+  await expect(composer).toHaveValue("@to");
+  await expect(page.getByRole("listbox")).toBeHidden();
+  await expect(composer).toHaveAttribute("aria-expanded", "false");
+});
+
+test("still shows a mention of you from someone else", async ({ page, server }) => {
+  const room = await roomWith(server.url, ["tom", "ada"]);
+  await postMessage(server.url, room.id, "ada", "@tom take a look", { authorKind: "bot" });
+  await page.goto(`${server.url}/rooms/${room.id}?as=tom`);
+
+  const chip = page.getByTestId("transcript").locator(".mention");
+  await expect(chip).toHaveText("@tom");
+  await expect(chip).toHaveClass(/mention-you/);
+});

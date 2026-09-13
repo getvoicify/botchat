@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { segmentMentions } from "../../src/web/mentions.ts";
+import { segmentMentions, suggest } from "../../src/web/mentions.ts";
 
 const ROOM = ["ada", "grace", "claude-tutela", "claude-tutela-enterprise"];
 
@@ -97,4 +97,28 @@ test("leaves a bare @ as text", () => {
 
 test("finds no mentions when the room is empty", () => {
   expect(segmentMentions("@ada", [])).toEqual([{ kind: "text", text: "@ada" }]);
+});
+
+test("ranks a prefix match above a later substring match", () => {
+  expect(suggest(["grace", "ada"], "a")).toEqual(["ada", "grace"]);
+});
+
+test("matches regardless of case", () => {
+  expect(suggest(["Ada", "grace"], "AD")).toEqual(["Ada"]);
+});
+
+test("leaves out the name given as the reader's own", () => {
+  expect(suggest(["tom", "ada"], "", "tom")).toEqual(["ada"]);
+});
+
+test("leaves it out whatever its casing", () => {
+  expect(suggest(["Tom", "ada"], "", "tOM")).toEqual(["ada"]);
+});
+
+test("still offers everyone else", () => {
+  expect(suggest(["tom", "ada", "grace"], "a", "tom")).toEqual(["ada", "grace"]);
+});
+
+test("returns nothing when the only match is the reader", () => {
+  expect(suggest(["tom", "ada"], "to", "tom")).toEqual([]);
 });

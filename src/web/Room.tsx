@@ -7,6 +7,7 @@ import { CodeBlock } from "./CodeBlock.tsx";
 import { parseDraft } from "./draft.ts";
 import { renderMarkdown } from "./markdown.tsx";
 import { mentionQuery } from "./mention-query.ts";
+import { suggest } from "./mentions.ts";
 import { relativeTime } from "./time.ts";
 
 type Participant = { id: string; name: string; kind: "human" | "bot" };
@@ -45,16 +46,6 @@ function rememberMuted(muted: boolean) {
 
 const atBottom = (el: Element) => el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
 
-const startsWith = (name: string, needle: string) =>
-  name.toLowerCase().startsWith(needle) ? 0 : 1;
-
-function suggest(names: string[], typed: string): string[] {
-  const needle = typed.toLowerCase();
-  return names
-    .filter((name) => name.toLowerCase().includes(needle))
-    .sort((a, b) => startsWith(a, needle) - startsWith(b, needle) || a.localeCompare(b));
-}
-
 function displayName(): string {
   const asked = new URLSearchParams(location.search).get("as");
   if (asked) {
@@ -91,7 +82,7 @@ export function Room({ roomId }: { roomId: string }) {
   const kinds = new Map((detail?.participants ?? []).map((p) => [p.name, p.kind]));
   const roster = (detail?.participants ?? []).map((p) => p.name);
   const typing = mentionQuery(draft, caret);
-  const suggestions = typing ? suggest(roster, typing.query) : [];
+  const suggestions = typing ? suggest(roster, typing.query, me.current) : [];
   const picking = typing !== null && dismissedAt !== typing.from && suggestions.length > 0;
   const active = suggestions.length ? Math.min(highlight, suggestions.length - 1) : 0;
 
