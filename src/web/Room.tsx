@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { getJson, postJson } from "./api.ts";
+import { getJson } from "./api.ts";
 import { AttachmentView, type Attachment } from "./AttachmentView.tsx";
 import { ImageReadyProvider } from "./ChatImage.tsx";
 import { type Chime, createChime, shouldChime } from "./chime.ts";
 import { CodeBlock } from "./CodeBlock.tsx";
-import { parseDraft } from "./draft.ts";
+import { Composer } from "./Composer.tsx";
 import { renderMarkdown } from "./markdown.tsx";
-import { mentionQuery } from "./mention-query.ts";
-import { suggest } from "./mentions.ts";
 import { relativeTime } from "./time.ts";
 
 type Participant = { id: string; name: string; kind: "human" | "bot" };
@@ -57,18 +55,12 @@ function displayName(): string {
 
 export function Room({ roomId }: { roomId: string }) {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [draft, setDraft] = useState("");
-  const [pending, setPending] = useState<Attachment[]>([]);
   const [connection, setConnection] = useState<"open" | "closed">("closed");
   const [detail, setDetail] = useState<RoomDetail | null>(null);
   const [inviting, setInviting] = useState(false);
   const [behind, setBehind] = useState(false);
   const [muted, setMuted] = useState(readMuted);
   const [now, setNow] = useState(() => Date.now());
-  const [caret, setCaret] = useState(0);
-  const [highlight, setHighlight] = useState(0);
-  const [dismissedAt, setDismissedAt] = useState<number | null>(null);
-  const caretWanted = useRef<number | null>(null);
   const mutedNow = useRef(muted);
   const behindNow = useRef(behind);
   const lastChimedAt = useRef(0);
@@ -76,15 +68,10 @@ export function Room({ roomId }: { roomId: string }) {
   const cursor = useRef(0);
   const me = useRef(displayName());
   const transcript = useRef<HTMLOListElement>(null);
-  const box = useRef<HTMLTextAreaElement>(null);
   const known = useRef(new Set<string>());
   const refreshing = useRef(false);
   const kinds = new Map((detail?.participants ?? []).map((p) => [p.name, p.kind]));
   const roster = (detail?.participants ?? []).map((p) => p.name);
-  const typing = mentionQuery(draft, caret);
-  const suggestions = typing ? suggest(roster, typing.query, me.current) : [];
-  const picking = typing !== null && dismissedAt !== typing.from && suggestions.length > 0;
-  const active = suggestions.length ? Math.min(highlight, suggestions.length - 1) : 0;
 
   const append = (incoming: Message) =>
     setMessages((current) => {
@@ -209,60 +196,10 @@ export function Room({ roomId }: { roomId: string }) {
     markBehind(!atBottom(el));
   }, [messages.length]);
 
-  useLayoutEffect(() => {
-    const el = box.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
-    const at = caretWanted.current;
-    if (at === null) return;
-    caretWanted.current = null;
-    el.focus();
-    el.setSelectionRange(at, at);
-  }, [draft]);
-
   function trackPosition() {
     const el = transcript.current;
     if (!el) return;
     markBehind(!atBottom(el));
-  }
-
-  function edit(value: string, at: number) {
-    setDraft(value);
-    setCaret(at);
-    setHighlight(0);
-    if (!mentionQuery(value, at)) setDismissedAt(null);
-  }
-
-  function complete(name: string) {
-    if (!typing) return;
-    const at = typing.from + name.length + 2;
-    caretWanted.current = at;
-    edit(`${draft.slice(0, typing.from)}@${name} ${draft.slice(caret)}`, at);
-  }
-
-  function compose(event: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (picking && typing) {
-      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-        event.preventDefault();
-        const step = event.key === "ArrowDown" ? 1 : suggestions.length - 1;
-        setHighlight((active + step) % suggestions.length);
-        return;
-      }
-      if (event.key === "Escape") {
-        event.preventDefault();
-        setDismissedAt(typing.from);
-        return;
-      }
-      if (event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) {
-        event.preventDefault();
-        complete(suggestions[active]!);
-        return;
-      }
-    }
-    if (event.key !== "Enter" || event.shiftKey) return;
-    event.preventDefault();
-    event.currentTarget.form?.requestSubmit();
   }
 
   function toggleSound() {
@@ -277,44 +214,6 @@ export function Room({ roomId }: { roomId: string }) {
     if (!el) return;
     el.scrollTop = el.scrollHeight;
     markBehind(false);
-  }
-
-  // Uploading on selection rather than on send keeps the transfer inside the
-  // time someone spends typing, so pressing Send stays instant for a large file.
-  async function attach(event: React.ChangeEvent<HTMLInputElement>) {
-    const chosen = Array.from(event.target.files ?? []);
-    event.target.value = "";
-    for (const file of chosen) {
-      const res = await fetch("/api/blobs", {
-        method: "POST",
-        headers: { "content-type": file.type || "application/octet-stream" },
-        body: file,
-      });
-      if (!res.ok) continue;
-      const blob = (await res.json()) as { id: string; mime: string; size: number };
-      setPending((current) => [
-        ...current,
-        { blobId: blob.id, filename: file.name, mime: blob.mime, size: blob.size },
-      ]);
-    }
-  }
-
-  async function send(event: React.FormEvent) {
-    event.preventDefault();
-    const { kind, body, lang } = parseDraft(draft);
-    const attachments = pending.map(({ blobId, filename }) => ({ blobId, filename }));
-    // The core refuses a blank body, so a message that is only files names them.
-    const spoken = body || attachments.map((file) => file.filename).join(", ");
-    if (!spoken) return;
-    setDraft("");
-    setPending([]);
-    await postJson(`/api/rooms/${roomId}/messages`, {
-      author: me.current,
-      body: spoken,
-      kind,
-      lang,
-      attachments,
-    });
   }
 
   return (
@@ -437,77 +336,7 @@ export function Room({ roomId }: { roomId: string }) {
         ) : null}
       </div>
       {connection === "closed" ? <p className="reconnecting">Reconnecting…</p> : null}
-      <form className="composer" data-testid="composer" onSubmit={send}>
-        {pending.length > 0 ? (
-          <ul className="pending" data-testid="pending-attachments">
-            {pending.map((file, index) => (
-              <li key={`${file.blobId}:${index}`}>
-                {file.filename}
-                <button
-                  type="button"
-                  aria-label={`Remove ${file.filename}`}
-                  onClick={() => setPending((current) => current.filter((_, at) => at !== index))}
-                >
-                  ×
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        {picking ? (
-          <ul className="mentions" role="listbox" data-testid="mention-list">
-            {suggestions.map((name, index) => (
-              <li
-                key={name}
-                id={`mention-option-${index}`}
-                role="option"
-                aria-selected={index === active}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  complete(name);
-                }}
-              >
-                {name}
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        <label className="sr-only" htmlFor="message">
-          Message
-        </label>
-        <textarea
-          id="message"
-          ref={box}
-          value={draft}
-          rows={1}
-          aria-expanded={picking}
-          aria-activedescendant={picking ? `mention-option-${active}` : undefined}
-          onChange={(e) => edit(e.target.value, e.target.selectionStart ?? e.target.value.length)}
-          onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
-          onKeyDown={compose}
-          placeholder={`Message as ${me.current}`}
-        />
-        <div className="controls">
-          <label className="attach" htmlFor="attachment">
-            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-              <path
-                d="M21 11.5 12.5 20a5.5 5.5 0 0 1-7.8-7.8l8.5-8.5a3.7 3.7 0 0 1 5.2 5.2l-8.5 8.5a1.8 1.8 0 0 1-2.6-2.6l7.8-7.8"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.7"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <span className="sr-only">Attach a file</span>
-          </label>
-          <input className="sr-only" id="attachment" type="file" multiple onChange={attach} />
-          <span className="hint">Enter to send · Shift+Enter for a new line</span>
-          <button type="submit" disabled={!draft.trim() && pending.length === 0}>
-            Send
-          </button>
-        </div>
-      </form>
+      <Composer roomId={roomId} roster={roster} me={me.current} />
     </main>
   );
 }
