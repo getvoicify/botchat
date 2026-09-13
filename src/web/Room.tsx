@@ -74,6 +74,7 @@ export function Room({ roomId }: { roomId: string }) {
   const known = useRef(new Set<string>());
   const refreshing = useRef(false);
   const kinds = new Map((detail?.participants ?? []).map((p) => [p.name, p.kind]));
+  const roster = (detail?.participants ?? []).map((p) => p.name);
 
   const append = (incoming: Message) =>
     setMessages((current) => {
@@ -359,7 +360,9 @@ export function Room({ roomId }: { roomId: string }) {
                 {message.kind === "code" ? (
                   <CodeBlock code={message.body} lang={message.lang} />
                 ) : message.kind === "text" ? (
-                  <div className="body">{renderMarkdown(message.body)}</div>
+                  <div className="body">
+                    {renderMarkdown(message.body, { participants: roster, me: me.current })}
+                  </div>
                 ) : (
                   <p>{message.body}</p>
                 )}

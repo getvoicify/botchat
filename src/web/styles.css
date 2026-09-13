@@ -107,3 +107,5 @@ pre code { display: block; padding: 0.6rem 0.7rem; border-radius: 0 0 8px 8px; b
 .filesize { font-size: 0.75rem; opacity: 0.6; }
 .attachments li.attachment-image { display: block; }
 .attachment-image .caption { display: flex; align-items: baseline; gap: 0.5rem; font-size: 0.85rem; }
+.mention { padding: 0.03rem 0.3rem; border-radius: 5px; background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); font-weight: 500; overflow-wrap: anywhere; }
+.mention-you { background: color-mix(in srgb, var(--accent) 85%, var(--bg)); color: var(--bg); }
