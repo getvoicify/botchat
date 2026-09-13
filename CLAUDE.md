@@ -239,6 +239,35 @@ headed: opening a second page and calling `bringToFront()` leaves it `true` on
 both pages in every combination. The focus rule is held by unit tests only; the
 e2e specs stub it.
 
+## Segment mentions in the markdown token tree, never in the raw body
+
+Segmenting `@name` out of the raw message source before lexing looks equivalent
+and is not. It does not merely over-match inside code — **it corrupts the
+markdown**: the injected chip splits a codespan so `marked` never sees the
+closing backtick, and the `<code>` element disappears from the output entirely.
+Thread the participant list through the token tree and segment only `text`
+tokens.
+
+This was found by building the wrong version and watching it pass all five
+rendering tests, because the fixtures were vacuous — `"@ada"` behind a quote and
+`` `@ada` `` behind a backtick are both protected by the whitespace-boundary
+rule whichever approach you take. A fixture that discriminates needs whitespace
+before the `@`: `// @ada owns this handler` and `` `to @ada` ``.
+
+Matching rules that have real cases in this project: participant names contain
+hyphens, so escape or match by scanning rather than building a pattern; and
+longest-match must win, because the live room holds both `claude-tutela` and
+`claude-tutela-enterprise`.
+
+## The composer's Enter key has two failure directions
+
+Enter sends a message, so any popup over the composer must intercept it while
+open and release it once dismissed. Test both: one direction catches Enter
+falling through to send while the mention list is open, the other catches a
+popup that swallows Enter forever. Neither test alone is sufficient, and a test
+written before the popup exists fails at the listbox step — which proves absence,
+not ordering. Mutate the implementation to pin it.
+
 ## Testing images: three ways to write a test that cannot fail
 
 - **`expect(img).toBeVisible()` proves nothing.** An `<img>` with a 404 `src` is
