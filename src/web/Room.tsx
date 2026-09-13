@@ -6,6 +6,7 @@ import { type Chime, createChime, shouldChime } from "./chime.ts";
 import { CodeBlock } from "./CodeBlock.tsx";
 import { parseDraft } from "./draft.ts";
 import { renderMarkdown } from "./markdown.tsx";
+import { mentionQuery } from "./mention-query.ts";
 import { relativeTime } from "./time.ts";
 
 type Participant = { id: string; name: string; kind: "human" | "bot" };
@@ -44,6 +45,16 @@ function rememberMuted(muted: boolean) {
 
 const atBottom = (el: Element) => el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
 
+const startsWith = (name: string, needle: string) =>
+  name.toLowerCase().startsWith(needle) ? 0 : 1;
+
+function suggest(names: string[], typed: string): string[] {
+  const needle = typed.toLowerCase();
+  return names
+    .filter((name) => name.toLowerCase().includes(needle))
+    .sort((a, b) => startsWith(a, needle) - startsWith(b, needle) || a.localeCompare(b));
+}
+
 function displayName(): string {
   const asked = new URLSearchParams(location.search).get("as");
   if (asked) {
@@ -63,6 +74,10 @@ export function Room({ roomId }: { roomId: string }) {
   const [behind, setBehind] = useState(false);
   const [muted, setMuted] = useState(readMuted);
   const [now, setNow] = useState(() => Date.now());
+  const [caret, setCaret] = useState(0);
+  const [highlight, setHighlight] = useState(0);
+  const [dismissedAt, setDismissedAt] = useState<number | null>(null);
+  const caretWanted = useRef<number | null>(null);
   const mutedNow = useRef(muted);
   const behindNow = useRef(behind);
   const lastChimedAt = useRef(0);
@@ -75,6 +90,10 @@ export function Room({ roomId }: { roomId: string }) {
   const refreshing = useRef(false);
   const kinds = new Map((detail?.participants ?? []).map((p) => [p.name, p.kind]));
   const roster = (detail?.participants ?? []).map((p) => p.name);
+  const typing = mentionQuery(draft, caret);
+  const suggestions = typing ? suggest(roster, typing.query) : [];
+  const picking = typing !== null && dismissedAt !== typing.from && suggestions.length > 0;
+  const active = suggestions.length ? Math.min(highlight, suggestions.length - 1) : 0;
 
   const append = (incoming: Message) =>
     setMessages((current) => {
@@ -204,12 +223,55 @@ export function Room({ roomId }: { roomId: string }) {
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
+    const at = caretWanted.current;
+    if (at === null) return;
+    caretWanted.current = null;
+    el.focus();
+    el.setSelectionRange(at, at);
   }, [draft]);
 
   function trackPosition() {
     const el = transcript.current;
     if (!el) return;
     markBehind(!atBottom(el));
+  }
+
+  function edit(value: string, at: number) {
+    setDraft(value);
+    setCaret(at);
+    setHighlight(0);
+    if (!mentionQuery(value, at)) setDismissedAt(null);
+  }
+
+  function complete(name: string) {
+    if (!typing) return;
+    const at = typing.from + name.length + 2;
+    caretWanted.current = at;
+    edit(`${draft.slice(0, typing.from)}@${name} ${draft.slice(caret)}`, at);
+  }
+
+  function compose(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (picking && typing) {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        const step = event.key === "ArrowDown" ? 1 : suggestions.length - 1;
+        setHighlight((active + step) % suggestions.length);
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setDismissedAt(typing.from);
+        return;
+      }
+      if (event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) {
+        event.preventDefault();
+        complete(suggestions[active]!);
+        return;
+      }
+    }
+    if (event.key !== "Enter" || event.shiftKey) return;
+    event.preventDefault();
+    event.currentTarget.form?.requestSubmit();
   }
 
   function toggleSound() {
@@ -401,6 +463,24 @@ export function Room({ roomId }: { roomId: string }) {
             ))}
           </ul>
         ) : null}
+        {picking ? (
+          <ul className="mentions" role="listbox" data-testid="mention-list">
+            {suggestions.map((name, index) => (
+              <li
+                key={name}
+                id={`mention-option-${index}`}
+                role="option"
+                aria-selected={index === active}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  complete(name);
+                }}
+              >
+                {name}
+              </li>
+            ))}
+          </ul>
+        ) : null}
         <label className="sr-only" htmlFor="message">
           Message
         </label>
@@ -409,12 +489,11 @@ export function Room({ roomId }: { roomId: string }) {
           ref={box}
           value={draft}
           rows={1}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key !== "Enter" || e.shiftKey) return;
-            e.preventDefault();
-            e.currentTarget.form?.requestSubmit();
-          }}
+          aria-expanded={picking}
+          aria-activedescendant={picking ? `mention-option-${active}` : undefined}
+          onChange={(e) => edit(e.target.value, e.target.selectionStart ?? e.target.value.length)}
+          onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
+          onKeyDown={compose}
           placeholder={`Message as ${me.current}`}
         />
         <div className="controls">

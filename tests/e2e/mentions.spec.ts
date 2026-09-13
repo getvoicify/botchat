@@ -72,3 +72,97 @@ test("marks a mention of you differently", async ({ page, server }) => {
   await expect(chips.filter({ hasText: "@tom" })).toHaveClass(/mention-you/);
   await expect(chips.filter({ hasText: "@grace" })).not.toHaveClass(/mention-you/);
 });
+
+const composerOf = (page: import("@playwright/test").Page) => page.getByLabel("Message");
+
+test("lists the participants matching what has been typed, prefix matches first", async ({
+  page,
+  server,
+}) => {
+  const room = await roomWith(server.url, ["tom", "ada", "grace"]);
+  await page.goto(`${server.url}/rooms/${room.id}?as=tom`);
+  const composer = composerOf(page);
+  await composer.click();
+  await composer.pressSequentially("@a");
+
+  await expect(page.getByRole("option")).toHaveText(["ada", "grace"]);
+  await expect(composer).toHaveAttribute("aria-expanded", "true");
+});
+
+test("does not send the message when Enter picks a mention", async ({ page, server }) => {
+  const room = await roomWith(server.url, ["tom", "ada"]);
+  await page.goto(`${server.url}/rooms/${room.id}?as=tom`);
+  const composer = composerOf(page);
+  await composer.click();
+  await composer.pressSequentially("@a");
+  await expect(page.getByRole("option", { name: "ada" })).toBeVisible();
+
+  await composer.press("Enter");
+
+  await expect(composer).toHaveValue("@ada ");
+  await expect(page.getByTestId("transcript").locator("li.message")).toHaveCount(2);
+});
+
+test("sends normally once the mention list is dismissed", async ({ page, server }) => {
+  const room = await roomWith(server.url, ["tom", "ada"]);
+  await page.goto(`${server.url}/rooms/${room.id}?as=tom`);
+  const composer = composerOf(page);
+  await composer.click();
+  await composer.pressSequentially("@a");
+  await expect(page.getByRole("listbox")).toBeVisible();
+
+  await composer.press("Escape");
+  await expect(page.getByRole("listbox")).toBeHidden();
+  await composer.pressSequentially(" hello");
+  await composer.press("Enter");
+
+  await expect(page.getByTestId("transcript")).toContainText("@a hello");
+  await expect(composer).toHaveValue("");
+});
+
+test("moves the highlight with the arrow keys", async ({ page, server }) => {
+  const room = await roomWith(server.url, ["tom", "ada", "grace"]);
+  await page.goto(`${server.url}/rooms/${room.id}?as=tom`);
+  const composer = composerOf(page);
+  await composer.click();
+  await composer.pressSequentially("@a");
+  await expect(page.getByRole("option", { name: "ada" })).toHaveAttribute("aria-selected", "true");
+
+  await composer.press("ArrowDown");
+
+  await expect(page.getByRole("option", { name: "grace" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await composer.press("Enter");
+  await expect(composer).toHaveValue("@grace ");
+});
+
+test("picks the highlighted participant with Tab", async ({ page, server }) => {
+  const room = await roomWith(server.url, ["tom", "ada"]);
+  await page.goto(`${server.url}/rooms/${room.id}?as=tom`);
+  const composer = composerOf(page);
+  await composer.click();
+  await composer.pressSequentially("@ad");
+  await expect(page.getByRole("option", { name: "ada" })).toBeVisible();
+
+  await composer.press("Tab");
+
+  await expect(composer).toHaveValue("@ada ");
+});
+
+test("completes a mention typed part way through a sentence", async ({ page, server }) => {
+  const room = await roomWith(server.url, ["tom", "ada"]);
+  await page.goto(`${server.url}/rooms/${room.id}?as=tom`);
+  const composer = composerOf(page);
+  await composer.click();
+  await composer.pressSequentially("morning @ad");
+  await expect(page.getByRole("option", { name: "ada" })).toBeVisible();
+  await composer.press("Enter");
+  await expect(composer).toHaveValue("morning @ada ");
+
+  await composer.pressSequentially("any news?");
+  await composer.press("Enter");
+
+  await expect(page.getByTestId("transcript").locator(".mention")).toHaveText("@ada");
+});
