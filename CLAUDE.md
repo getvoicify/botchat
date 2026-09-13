@@ -295,6 +295,43 @@ Fixtures live in `tests/e2e/png.ts` as base64 constants, not binaries — a real
 48×32 and a 1200×40. The wide one exists because a small image cannot overflow a
 640 px column, so the overflow stress case needs it.
 
+## Measuring React input latency: the value-setter trap
+
+Setting `textarea.value` directly and dispatching an `input` event **does not
+trigger React's onChange** — React overrides the value setter and dedupes, so
+nothing re-renders. A performance measurement built that way shows a 15-row and
+a 200-row room as identical and looks like proof there is no bug. It nearly
+buried a real one. The tell is zero DOM mutations. Drive `page.keyboard.type()`
+and assert the textarea's value afterwards to prove React saw the input.
+
+## Why the transcript stays fast, and what silently breaks it
+
+Typing used to re-render the whole `Room`, re-running `marked.lexer`, mention
+segmentation and `hljs.highlight` across every message. At 6× CPU throttle
+(roughly phone-class) that was 23 long tasks of 80–129 ms for 23 keystrokes, and
+message *arrivals* were worse at 215–415 ms each.
+
+Two structures hold it, and both are load-bearing:
+
+- `Composer.tsx` owns `draft`, `caret`, the mention popup state and pending
+  attachments. Typing cannot re-render the transcript because the state is not
+  there. `React.memo` alone measured just as fast, but it holds only while every
+  row prop stays referentially stable — one inline lambda added later silently
+  restores the defect.
+- `MessageRow` is `React.memo`'d and `roster` is `useMemo`'d **keyed on the
+  joined participant names, not on `detail` identity**. Deleting only that
+  `useMemo` took arrivals straight back to 10 long tasks.
+
+Two perf specs exist because neither can drive the other's fix: once the
+composer is extracted, `typing-perf` is green regardless of memoization, so
+`arrival-perf` is what guards the row memo. Shared seed in
+`tests/e2e/transcript.ts`.
+
+**Seed a perf test with realistic content.** 200 short messages sit right on the
+50 ms long-task cliff and give 2, 3, 7, 21 across runs — a false green on an
+idle machine. Three-sentence paragraphs and 10-line fenced blocks reproduce
+stably.
+
 ## Read the machine's load before believing a flake
 
 A "narrowing margin" on e2e timing was mostly a game: load average 56 with
