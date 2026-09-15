@@ -1,6 +1,7 @@
 import index from "./src/web/index.html";
 import { BlobStore } from "./src/core/blobs.ts";
 import { EventBus } from "./src/core/bus.ts";
+import { MemoryService } from "./src/core/memories.ts";
 import { MessageService } from "./src/core/messages.ts";
 import { RoomService } from "./src/core/rooms.ts";
 import { openDatabase } from "./src/db/schema.ts";
@@ -13,8 +14,9 @@ const store = new Store(openDatabase(process.env.BOTCHAT_DB ?? "botchat.db"));
 const bus = new EventBus();
 const rooms = new RoomService(store);
 const messages = new MessageService(store, rooms, bus);
+const memories = new MemoryService(store, rooms);
 const blobs = new BlobStore(store, process.env.BOTCHAT_BLOBS ?? "data/blobs");
-const mcp = createMcpHandler({ store, rooms, messages, bus, blobs });
+const mcp = createMcpHandler({ store, rooms, messages, memories, bus, blobs });
 
 const server = Bun.serve({
   port: Number(process.env.PORT ?? 4000),

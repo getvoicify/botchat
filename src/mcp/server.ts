@@ -3,6 +3,7 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { z } from "zod";
 import type { BlobStore } from "../core/blobs.ts";
 import type { EventBus } from "../core/bus.ts";
+import type { Memory, MemoryService } from "../core/memories.ts";
 import type { Message, MessageService } from "../core/messages.ts";
 import type { RoomService } from "../core/rooms.ts";
 import { digest } from "../core/summary.ts";
@@ -29,10 +30,20 @@ const renderPage = (messages: Message[]) =>
     ? "no new messages"
     : `${messages.map(renderMessage).join("\n")}\n\ncursor: ${messages[messages.length - 1]!.seq}`;
 
+const renderMemory = (memory: Memory, excerpt?: string) =>
+  [
+    memory.id,
+    `  note: ${memory.note}`,
+    `  pinned by ${memory.pinnedBy} on ${new Date(memory.createdAt).toISOString()}`,
+    ...(excerpt ? [`  match: ${excerpt}`] : []),
+    ...memory.messages.map((m) => `  #${m.seq} ${m.author}: ${m.body}`),
+  ].join("\n");
+
 export function createMcpHandler(deps: {
   store: Store;
   rooms: RoomService;
   messages: MessageService;
+  memories: MemoryService;
   bus: EventBus;
   blobs: BlobStore;
 }) {
@@ -192,6 +203,78 @@ export function createMcpHandler(deps: {
         if (backlog.length > 0) return text(renderPage(backlog));
         await deps.bus.once(room_id, Math.min(timeout_ms ?? 20_000, AWAIT_CAP_MS));
         return text(renderPage(deps.messages.since(room_id, since)));
+      },
+    );
+
+    server.registerTool(
+      "pin_memory",
+      {
+        description:
+          "Pin an exchange as an important memory of this room, with a note saying why it will matter later. For decisions, conclusions and constraints a bot joining next month would need to know — not for ordinary conversation.",
+        inputSchema: {
+          room_id: z.string(),
+          author: z.string().describe("the name you speak under in this room"),
+          message_seqs: z.array(z.number()).describe("the seqs of the messages worth keeping"),
+          note: z.string().describe("why this exchange will matter later"),
+        },
+      },
+      async ({ room_id, author, message_seqs, note }) => {
+        const memory = deps.memories.pin({
+          roomId: room_id,
+          author,
+          messageSeqs: message_seqs,
+          note,
+        });
+        return text(`pinned as an important memory:\n${renderMemory(memory)}`);
+      },
+    );
+
+    server.registerTool(
+      "search_memories",
+      {
+        description:
+          "Search this room's important memories. Matches the notes and the pinned messages themselves. Plain words; no operators needed.",
+        inputSchema: { room_id: z.string(), query: z.string(), limit: z.number().optional() },
+      },
+      async ({ room_id, query, limit }) => {
+        const hits = deps.memories.search(room_id, query, limit);
+        return text(
+          hits.map((hit) => renderMemory(hit, hit.excerpt)).join("\n\n") ||
+            "no memories match that",
+        );
+      },
+    );
+
+    server.registerTool(
+      "list_memories",
+      {
+        description: "List this room's important memories, most recently pinned first.",
+        inputSchema: { room_id: z.string(), limit: z.number().optional() },
+      },
+      async ({ room_id, limit }) =>
+        text(
+          deps.memories
+            .list(room_id, limit)
+            .map((memory) => renderMemory(memory))
+            .join("\n\n") || "no memories pinned yet",
+        ),
+    );
+
+    server.registerTool(
+      "unpin_memory",
+      {
+        description:
+          "Drop a memory that no longer holds, so it stops turning up in searches. The room's history is untouched.",
+        inputSchema: {
+          memory_id: z.string(),
+          reason: z.string().optional().describe("what superseded it, for the reply only"),
+        },
+      },
+      async ({ memory_id, reason }) => {
+        const memory = deps.memories.unpin(memory_id);
+        return text(
+          `unpinned ${memory.id}${reason ? ` — ${reason}` : ""}\n  it read: ${memory.note}`,
+        );
       },
     );
 

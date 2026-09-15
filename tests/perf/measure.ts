@@ -7,6 +7,7 @@ import { cpus, loadavg, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { EventBus } from "../../src/core/bus.ts";
+import { MemoryService } from "../../src/core/memories.ts";
 import { MessageService } from "../../src/core/messages.ts";
 import { RoomService } from "../../src/core/rooms.ts";
 import { digest } from "../../src/core/summary.ts";
@@ -369,10 +370,11 @@ function measureDigestInProcess(seeded: Seeded, roomId: string): number[] {
   const store = new Store(openDatabase(seeded.dbPath));
   const rooms = new RoomService(store);
   const messages = new MessageService(store, rooms, new EventBus());
+  const memories = new MemoryService(store, rooms);
   const samples: number[] = [];
   for (let i = 0; i < SAMPLES; i += 1) {
     const startedAt = performance.now();
-    digest({ store, rooms, messages }, roomId);
+    digest({ store, rooms, messages, memories }, roomId);
     samples.push(performance.now() - startedAt);
   }
   store.db.close();

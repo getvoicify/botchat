@@ -21,9 +21,13 @@ test("advertises the tools a bot needs to hold a conversation", async ({ server 
       "get_messages",
       "join_room",
       "list_attachments",
+      "list_memories",
       "list_rooms",
+      "pin_memory",
       "post_message",
       "read_attachment",
+      "search_memories",
+      "unpin_memory",
     ].sort(),
   );
   await client.close();

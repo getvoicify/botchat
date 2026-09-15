@@ -1,4 +1,5 @@
 import type { Store } from "../db/store.ts";
+import type { MemoryService } from "./memories.ts";
 import type { Message, MessageService } from "./messages.ts";
 import type { RoomService } from "./rooms.ts";
 
@@ -6,6 +7,7 @@ const OPENING = 3;
 const RECENT = 15;
 const WHOLE_THING_UNDER = OPENING + RECENT;
 const BODY_CAP = 400;
+const MEMORIES = 5;
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
@@ -15,7 +17,12 @@ const line = (m: Message) =>
   `#${m.seq} ${m.author}${m.kind === "code" ? ` [${m.lang ?? "code"}]` : ""}: ${body(m)}`;
 
 export function digest(
-  deps: { store: Store; rooms: RoomService; messages: MessageService },
+  deps: {
+    store: Store;
+    rooms: RoomService;
+    messages: MessageService;
+    memories: MemoryService;
+  },
   roomId: string,
 ): { text: string; cursor: number } {
   const room = deps.rooms.get(roomId);
@@ -62,6 +69,19 @@ export function digest(
   const files = deps.store.attachmentManifest(room.id);
   if (files.length > 0) {
     sections.push("", "Files shared:", ...files.map((f) => `  ${f.filename} (${f.mime}, ${f.size} bytes)`));
+  }
+
+  const pinned = deps.memories.list(room.id, MEMORIES);
+  if (pinned.length > 0) {
+    sections.push(
+      "",
+      "Pinned as important:",
+      ...pinned.map(
+        (m) =>
+          `  ${m.messages.map((p) => `#${p.seq}`).join(", ")} — ${m.note} (pinned by ${m.pinnedBy})`,
+      ),
+      "Search them with search_memories(room_id, query).",
+    );
   }
 
   const cursor = deps.messages.latest(room.id, 1)[0]!.seq;
