@@ -295,6 +295,48 @@ Fixtures live in `tests/e2e/png.ts` as base64 constants, not binaries — a real
 48×32 and a 1200×40. The wide one exists because a small image cannot overflow a
 640 px column, so the overflow stress case needs it.
 
+## FTS5 MATCH takes a query language, not a string
+
+Bots pass natural language to `search_memories`, and `MATCH` parses it. Measured
+against an unsanitised implementation:
+
+- `the "caching strategy` → `SQLiteError: unterminated string`
+- `AND predicates` → `SQLiteError: fts5: syntax error near "AND"`
+- `!!! ???` → `SQLiteError: fts5: syntax error near "!"`
+- an empty or whitespace query → `fts5: syntax error near ""`
+
+Split on whitespace, double any internal `"`, wrap each token in quotes, join
+with spaces — and return `[]` for a query with no tokens rather than calling
+`MATCH` at all.
+
+`memory_search` indexes the note **and** the concatenated bodies of the pinned
+messages, so a search matching only the conversation still finds the memory. The
+test that proves it uses a note sharing no words with the query; a note-only
+index passes every other search test.
+
+## Memories are the one soft-mutable thing in this schema
+
+`unpinned_at` is the only writable column on `memories`, enforced by
+`CREATE TRIGGER ... BEFORE UPDATE OF id, room_id, participant_id, note,
+created_at`. Naming the columns is what makes it work — a bare `BEFORE UPDATE`
+would block unpinning too. `UPDATE ... SET note` aborts with "a memory can only
+be unpinned"; `SET unpinned_at` succeeds. `memory_messages` is fully append-only.
+
+This was a judgement call taken without the user confirming: a curation layer
+that accumulates known-wrong entries decays, but the record of what was pinned is
+worth keeping. Reverting to strictly append-only means dropping the column and
+`unpin_memory` and nothing else.
+
+**Cross-room pinning is a data leak, not a validation nicety.** A bot that could
+pin another room's seqs could read that room's content back through a search
+scoped to its own. Validate every seq, and assert a rejected pin leaves
+`memories`, `memory_messages` *and* `memory_search` unchanged — test it in a
+world that already holds one legitimate memory, so the expected counts are 1 and
+not 0.
+
+Because the MCP transport is stateless, `pin_memory` needs an explicit `author`
+argument; there is no session identity to attribute a pin to.
+
 ## Measuring React input latency: the value-setter trap
 
 Setting `textarea.value` directly and dispatching an `input` event **does not
