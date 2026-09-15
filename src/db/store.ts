@@ -40,6 +40,26 @@ export type Attachment = { blobId: string; filename: string; mime: string; size:
 
 export type BlobRecord = { id: string; mime: string; size: number; createdAt: number };
 
+export type PinnedMessage = { seq: number; author: string; body: string };
+
+export type MemoryRecord = {
+  id: string;
+  roomId: string;
+  pinnedBy: string;
+  note: string;
+  createdAt: number;
+  unpinnedAt: number | null;
+};
+
+export type MemoryMatch = MemoryRecord & { excerpt: string; rank: number };
+
+type PinnedMessageRow = PinnedMessage & { memoryId: string };
+
+const MEMORY_COLUMNS =
+  "mem.id, mem.room_id AS roomId, p.name AS pinnedBy, mem.note, " +
+  "mem.created_at AS createdAt, mem.unpinned_at AS unpinnedAt " +
+  "FROM memories mem JOIN participants p ON p.id = mem.participant_id";
+
 type RoomRow = { id: string; name: string; topic: string | null; created_at: number };
 
 type BlobRow = { id: string; mime: string; size: number; created_at: number };
@@ -127,6 +147,16 @@ export class Store {
   #findBlob: Statement<BlobRow>;
   #insertAttachment: Statement;
   #attachmentsForMessages: Statement<AttachmentRow>;
+  #messagesInRoom: Statement<PinnedMessage>;
+  #insertMemory: Statement;
+  #insertMemoryMessage: Statement;
+  #insertMemorySearch: Statement;
+  #pinMemory: (memory: MemoryRecord, participantId: string, seqs: number[], body: string) => void;
+  #findMemory: Statement<MemoryRecord>;
+  #listMemories: Statement<MemoryRecord>;
+  #searchMemories: Statement<MemoryMatch>;
+  #unpinMemory: Statement;
+  #pinnedMessagesForMemories: Statement<PinnedMessageRow>;
 
   constructor(db: Database) {
     this.db = db;
@@ -185,6 +215,66 @@ export class Store {
         "FROM message_attachments a JOIN blobs b ON b.id = a.blob_id " +
         "WHERE a.message_seq IN (SELECT value FROM json_each($seqs)) " +
         "ORDER BY a.message_seq, a.rowid",
+    );
+    this.#messagesInRoom = db.prepare(
+      "SELECT m.seq, p.name AS author, m.body FROM messages m " +
+        "JOIN participants p ON p.id = m.participant_id " +
+        "WHERE m.room_id = $roomId AND m.seq IN (SELECT value FROM json_each($seqs)) " +
+        "ORDER BY m.seq",
+    );
+    this.#insertMemory = db.prepare(
+      "INSERT INTO memories (id, room_id, participant_id, note, created_at, unpinned_at) " +
+        "VALUES ($id, $roomId, $participantId, $note, $createdAt, null)",
+    );
+    this.#insertMemoryMessage = db.prepare(
+      "INSERT INTO memory_messages (memory_id, message_seq) VALUES ($memoryId, $messageSeq)",
+    );
+    this.#insertMemorySearch = db.prepare(
+      "INSERT INTO memory_search (memory_id, room_id, note, body) " +
+        "VALUES ($memoryId, $roomId, $note, $body)",
+    );
+    this.#pinMemory = db.transaction(
+      (memory: MemoryRecord, participantId: string, seqs: number[], body: string) => {
+        this.#insertMemory.run({
+          $id: memory.id,
+          $roomId: memory.roomId,
+          $participantId: participantId,
+          $note: memory.note,
+          $createdAt: memory.createdAt,
+        });
+        for (const seq of seqs)
+          this.#insertMemoryMessage.run({ $memoryId: memory.id, $messageSeq: seq });
+        this.#insertMemorySearch.run({
+          $memoryId: memory.id,
+          $roomId: memory.roomId,
+          $note: memory.note,
+          $body: body,
+        });
+      },
+    );
+    this.#findMemory = db.prepare(`SELECT ${MEMORY_COLUMNS} WHERE mem.id = $id`);
+    this.#listMemories = db.prepare(
+      `SELECT ${MEMORY_COLUMNS} WHERE mem.room_id = $roomId AND mem.unpinned_at IS NULL ` +
+        "ORDER BY mem.created_at DESC, mem.rowid DESC LIMIT $limit",
+    );
+    this.#searchMemories = db.prepare(
+      "SELECT mem.id, mem.room_id AS roomId, p.name AS pinnedBy, mem.note, " +
+        "mem.created_at AS createdAt, mem.unpinned_at AS unpinnedAt, " +
+        "snippet(memory_search, -1, '[', ']', '…', 12) AS excerpt, " +
+        "bm25(memory_search) AS rank " +
+        "FROM memory_search " +
+        "JOIN memories mem ON mem.id = memory_search.memory_id " +
+        "JOIN participants p ON p.id = mem.participant_id " +
+        "WHERE memory_search MATCH $query AND memory_search.room_id = $roomId " +
+        "AND mem.unpinned_at IS NULL ORDER BY bm25(memory_search) LIMIT $limit",
+    );
+    this.#unpinMemory = db.prepare("UPDATE memories SET unpinned_at = $at WHERE id = $id");
+    this.#pinnedMessagesForMemories = db.prepare(
+      "SELECT mm.memory_id AS memoryId, m.seq, p.name AS author, m.body " +
+        "FROM memory_messages mm JOIN messages m ON m.seq = mm.message_seq " +
+        "JOIN participants p ON p.id = m.participant_id " +
+        "WHERE mm.memory_id IN (SELECT value FROM json_each($ids)) " +
+        "ORDER BY mm.memory_id, m.seq",
     );
   }
 
@@ -311,6 +401,48 @@ export class Store {
       const existing = grouped.get(row.messageSeq);
       if (existing) existing.push(attachment);
       else grouped.set(row.messageSeq, [attachment]);
+    }
+    return grouped;
+  }
+
+  messagesInRoom(roomId: string, seqs: number[]): PinnedMessage[] {
+    if (seqs.length === 0) return [];
+    return this.#messagesInRoom.all({ $roomId: roomId, $seqs: JSON.stringify(seqs) });
+  }
+
+  insertMemory(
+    memory: MemoryRecord,
+    participantId: string,
+    seqs: number[],
+    body: string,
+  ): void {
+    this.#pinMemory(memory, participantId, seqs, body);
+  }
+
+  findMemory(id: string): MemoryRecord | null {
+    return this.#findMemory.get({ $id: id }) ?? null;
+  }
+
+  listMemories(roomId: string, limit: number): MemoryRecord[] {
+    return this.#listMemories.all({ $roomId: roomId, $limit: limit });
+  }
+
+  searchMemories(roomId: string, query: string, limit: number): MemoryMatch[] {
+    return this.#searchMemories.all({ $roomId: roomId, $query: query, $limit: limit });
+  }
+
+  unpinMemory(id: string, at: number): void {
+    this.#unpinMemory.run({ $id: id, $at: at });
+  }
+
+  pinnedMessagesForMemories(ids: string[]): Map<string, PinnedMessage[]> {
+    const grouped = new Map<string, PinnedMessage[]>();
+    if (ids.length === 0) return grouped;
+    for (const row of this.#pinnedMessagesForMemories.all({ $ids: JSON.stringify(ids) })) {
+      const message: PinnedMessage = { seq: row.seq, author: row.author, body: row.body };
+      const existing = grouped.get(row.memoryId);
+      if (existing) existing.push(message);
+      else grouped.set(row.memoryId, [message]);
     }
     return grouped;
   }

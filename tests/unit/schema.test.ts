@@ -14,6 +14,14 @@ function seed(db: ReturnType<typeof openDatabase>) {
   );
 }
 
+function pin(db: ReturnType<typeof openDatabase>) {
+  db.run(
+    "INSERT INTO memories (id, room_id, participant_id, note, created_at, unpinned_at) " +
+      "VALUES ('mem1', 'r1', 'p1', 'why this matters', 1, null)",
+  );
+  db.run("INSERT INTO memory_messages (memory_id, message_seq) VALUES ('mem1', 1)");
+}
+
 test("refuses to update a message that has already been written", () => {
   const db = openDatabase(":memory:");
   seed(db);
@@ -130,6 +138,67 @@ test("refuses to delete an attachment that has already been written", () => {
     "INSERT INTO message_attachments (message_seq, blob_id, filename) VALUES (1, 'b1', 'a.png')",
   );
   expect(() => db.run("DELETE FROM message_attachments")).toThrow(/append-only/);
+});
+
+test("refuses to rewrite the note on a memory that has already been pinned", () => {
+  const db = openDatabase(":memory:");
+  seed(db);
+  pin(db);
+  expect(() => db.run("UPDATE memories SET note = 'rewritten' WHERE id = 'mem1'")).toThrow(
+    /only be unpinned/,
+  );
+});
+
+test("refuses to move a pinned memory into another room", () => {
+  const db = openDatabase(":memory:");
+  seed(db);
+  pin(db);
+  expect(() => db.run("UPDATE memories SET room_id = 'r2' WHERE id = 'mem1'")).toThrow(
+    /only be unpinned/,
+  );
+});
+
+test("keeps the original note after a rejected rewrite", () => {
+  const db = openDatabase(":memory:");
+  seed(db);
+  pin(db);
+  try {
+    db.run("UPDATE memories SET note = 'rewritten' WHERE id = 'mem1'");
+  } catch {}
+  expect(db.query("SELECT note FROM memories WHERE id = 'mem1'").get()).toEqual({
+    note: "why this matters",
+  });
+});
+
+test("lets a pinned memory be unpinned", () => {
+  const db = openDatabase(":memory:");
+  seed(db);
+  pin(db);
+  db.run("UPDATE memories SET unpinned_at = 2 WHERE id = 'mem1'");
+  expect(db.query("SELECT unpinned_at FROM memories WHERE id = 'mem1'").get()).toEqual({
+    unpinned_at: 2,
+  });
+});
+
+test("refuses to delete a memory instead of unpinning it", () => {
+  const db = openDatabase(":memory:");
+  seed(db);
+  pin(db);
+  expect(() => db.run("DELETE FROM memories WHERE id = 'mem1'")).toThrow(/unpin instead/);
+});
+
+test("refuses to change which messages a memory pinned", () => {
+  const db = openDatabase(":memory:");
+  seed(db);
+  pin(db);
+  expect(() => db.run("UPDATE memory_messages SET message_seq = 2")).toThrow(/append-only/);
+});
+
+test("refuses to delete the messages a memory pinned", () => {
+  const db = openDatabase(":memory:");
+  seed(db);
+  pin(db);
+  expect(() => db.run("DELETE FROM memory_messages")).toThrow(/append-only/);
 });
 
 test("counts a participant's messages through an index instead of reading every message", () => {

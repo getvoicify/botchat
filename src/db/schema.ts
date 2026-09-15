@@ -47,6 +47,27 @@ CREATE TABLE IF NOT EXISTS message_attachments (
   PRIMARY KEY (message_seq, blob_id)
 );
 
+CREATE TABLE IF NOT EXISTS memories (
+  id TEXT PRIMARY KEY,
+  room_id TEXT NOT NULL REFERENCES rooms(id),
+  participant_id TEXT NOT NULL REFERENCES participants(id),
+  note TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  unpinned_at INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS memories_by_room ON memories (room_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS memory_messages (
+  memory_id TEXT NOT NULL REFERENCES memories(id),
+  message_seq INTEGER NOT NULL REFERENCES messages(seq),
+  PRIMARY KEY (memory_id, message_seq)
+);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS memory_search USING fts5(
+  memory_id UNINDEXED, room_id UNINDEXED, note, body, tokenize='porter unicode61'
+);
+
 CREATE TRIGGER IF NOT EXISTS messages_no_update BEFORE UPDATE ON messages
 BEGIN SELECT RAISE(ABORT, 'messages are append-only'); END;
 
@@ -61,6 +82,20 @@ BEGIN SELECT RAISE(ABORT, 'attachments are append-only'); END;
 
 CREATE TRIGGER IF NOT EXISTS message_attachments_no_delete BEFORE DELETE ON message_attachments
 BEGIN SELECT RAISE(ABORT, 'attachments are append-only'); END;
+
+-- Naming the columns is what leaves unpinned_at as the one writable field.
+CREATE TRIGGER IF NOT EXISTS memories_only_unpin
+BEFORE UPDATE OF id, room_id, participant_id, note, created_at ON memories
+BEGIN SELECT RAISE(ABORT, 'a memory can only be unpinned'); END;
+
+CREATE TRIGGER IF NOT EXISTS memories_no_delete BEFORE DELETE ON memories
+BEGIN SELECT RAISE(ABORT, 'memories are append-only; unpin instead'); END;
+
+CREATE TRIGGER IF NOT EXISTS memory_messages_no_update BEFORE UPDATE ON memory_messages
+BEGIN SELECT RAISE(ABORT, 'pinned messages are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS memory_messages_no_delete BEFORE DELETE ON memory_messages
+BEGIN SELECT RAISE(ABORT, 'pinned messages are append-only'); END;
 `;
 
 export function openDatabase(path: string): Database {
