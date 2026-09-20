@@ -131,6 +131,7 @@ export class Store {
   #insertAttachment: Statement;
   #attachmentsForMessages: Statement<AttachmentRow>;
   #recordHeartbeat: Statement;
+  #refreshHeartbeat: Statement;
   #recordHeartbeatAlarm: Statement;
   #staleAgents: Statement<StaleAgent>;
   #setRoomHeartbeat: Statement;
@@ -201,22 +202,25 @@ export class Store {
         "WHERE EXISTS (SELECT 1 FROM rooms WHERE id = $roomId AND heartbeat_enabled = 1) " +
         "ON CONFLICT(room_id, author) DO UPDATE SET last_seen_at = excluded.last_seen_at",
     );
+    this.#refreshHeartbeat = db.prepare(
+      "UPDATE agent_heartbeats SET last_seen_at = $at " +
+        "WHERE room_id = $roomId AND author = $author " +
+        "AND EXISTS (SELECT 1 FROM rooms WHERE id = $roomId AND heartbeat_enabled = 1)",
+    );
     this.#recordHeartbeatAlarm = db.prepare(
-      "INSERT INTO agent_heartbeats (room_id, author, last_seen_at, last_alarm_at) " +
-        "SELECT $roomId, $author, 0, $at " +
-        "WHERE EXISTS (SELECT 1 FROM rooms WHERE id = $roomId AND heartbeat_enabled = 1) " +
-        "ON CONFLICT(room_id, author) DO UPDATE SET last_alarm_at = excluded.last_alarm_at",
+      "UPDATE agent_heartbeats SET last_alarm_at = $at " +
+        "WHERE room_id = $roomId AND author = $author " +
+        "AND EXISTS (SELECT 1 FROM rooms WHERE id = $roomId AND heartbeat_enabled = 1)",
     );
     this.#staleAgents = db.prepare(
-      "SELECT p.room_id AS roomId, p.name AS author, COALESCE(h.last_seen_at, 0) AS lastSeenAt " +
+      "SELECT p.room_id AS roomId, p.name AS author, h.last_seen_at AS lastSeenAt " +
         "FROM participants p " +
         "JOIN rooms r ON r.id = p.room_id " +
-        "LEFT JOIN agent_heartbeats h ON h.room_id = p.room_id AND h.author = p.name " +
+        "JOIN agent_heartbeats h ON h.room_id = p.room_id AND h.author = p.name " +
         "WHERE r.heartbeat_enabled = 1 " +
         "AND p.kind = 'bot' " +
         "AND p.name != $alarmAuthor " +
-        "AND EXISTS (SELECT 1 FROM messages m WHERE m.participant_id = p.id) " +
-        "AND COALESCE(h.last_seen_at, 0) < $staleBefore " +
+        "AND h.last_seen_at < $staleBefore " +
         "AND COALESCE(h.last_alarm_at, 0) < $cooldownBefore " +
         "AND EXISTS (SELECT 1 FROM messages m2 WHERE m2.room_id = p.room_id AND m2.created_at > $recentSince)",
     );
@@ -359,6 +363,10 @@ export class Store {
 
   recordHeartbeat(roomId: string, author: string, at: number): void {
     this.#recordHeartbeat.run({ $roomId: roomId, $author: author, $at: at });
+  }
+
+  refreshHeartbeat(roomId: string, author: string, at: number): void {
+    this.#refreshHeartbeat.run({ $roomId: roomId, $author: author, $at: at });
   }
 
   recordHeartbeatAlarm(roomId: string, author: string, at: number): void {
