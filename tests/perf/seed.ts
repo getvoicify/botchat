@@ -143,6 +143,7 @@ export async function seed(dataDir: string): Promise<Seeded> {
         name: `room ${String(index + 1).padStart(2, "0")}`,
         topic: index % 3 === 0 ? `what room ${index + 1} is for` : null,
         createdAt: now - (ROOM_COUNT - index) * 86_400_000,
+        heartbeatEnabled: true,
       });
       rooms.push({ id, name: `room ${index + 1}`, messages: count, firstSeq: 0, lastSeq: 0, deepSeq: 0 });
       participantIds.push(

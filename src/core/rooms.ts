@@ -9,14 +9,17 @@ export type ParticipantKind = Participant["kind"];
 export class RoomService {
   constructor(private readonly store: Store) {}
 
-  create(input: { name: string; topic?: string | null }): Room {
+  create(input: { name: string; topic?: string | null; heartbeatEnabled?: boolean }): Room {
     const name = input.name?.trim() ?? "";
     if (!name) throw new Invalid("room name is required");
+    if (input.heartbeatEnabled !== undefined && typeof input.heartbeatEnabled !== "boolean")
+      throw new Invalid("heartbeatEnabled must be a boolean");
     const room: Room = {
       id: newId(),
       name,
       topic: input.topic?.trim() || null,
       createdAt: Date.now(),
+      heartbeatEnabled: input.heartbeatEnabled ?? true,
     };
     this.store.insertRoom(room);
     return room;
@@ -62,5 +65,12 @@ export class RoomService {
 
   participants(roomId: string): Participant[] {
     return this.store.listParticipants(this.get(roomId).id);
+  }
+
+  setHeartbeat(roomId: string, enabled: boolean): Room {
+    if (typeof enabled !== "boolean") throw new Invalid("heartbeatEnabled must be a boolean");
+    const room = this.get(roomId);
+    this.store.setRoomHeartbeat(room.id, enabled);
+    return { ...room, heartbeatEnabled: enabled };
   }
 }

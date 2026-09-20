@@ -72,6 +72,10 @@ export class MessageService {
     for (const attachment of attachments)
       this.store.insertAttachment(seq, attachment.blobId, attachment.filename);
 
+    // A post is proof the author is alive, so it refreshes the heartbeat
+    // exactly like an explicit ping would.
+    this.store.recordHeartbeat(room.id, participant.name, createdAt);
+
     // Emitted after the insert returns, never inside a transaction: a rollback
     // would otherwise announce a seq no reader can find.
     this.bus.emit(room.id);
