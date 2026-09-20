@@ -77,10 +77,45 @@ test("a non-ping message on the socket is ignored", () => {
   expect(store.heartbeat(room.id, "ada")).toBeNull();
 });
 
-test("posting a message refreshes last-seen without an explicit ping", () => {
+test("posting alone does not declare an agent", () => {
   const { store, messages, room } = fixture();
+  messages.post({ roomId: room.id, author: "ada", body: "just one message", authorKind: "bot" });
+  expect(store.heartbeat(room.id, "ada")).toBeNull();
+});
+
+test("posting refreshes an already-declared agent's last-seen", () => {
+  const { store, messages, room } = fixture();
+  store.recordHeartbeat(room.id, "ada", 0);
+  const before = store.heartbeat(room.id, "ada")!.lastSeenAt;
   messages.post({ roomId: room.id, author: "ada", body: "still here", authorKind: "bot" });
-  expect(store.heartbeat(room.id, "ada")?.lastSeenAt).toBeTypeOf("number");
+  const after = store.heartbeat(room.id, "ada")!.lastSeenAt;
+  expect(after).toBeGreaterThan(before);
+});
+
+test("a one-message author who never pings is never alarmed", () => {
+  const { store, heartbeats, room } = fixture();
+  // api posts once (participant exists) but never sends a ping.
+  store.insertParticipant({ id: crypto.randomUUID(), roomId: room.id, name: "api", kind: "bot", joinedAt: NOW - 60 * MIN });
+  store.insertMessage({
+    roomId: room.id,
+    participantId: store.findParticipantByName(room.id, "api")!.id,
+    kind: "text",
+    body: "stray post",
+    lang: null,
+    createdAt: NOW - 1 * MIN,
+  });
+  // A human keeps the room active so the quiet-room exemption does not hide it.
+  store.insertParticipant({ id: crypto.randomUUID(), roomId: room.id, name: "tom", kind: "human", joinedAt: NOW - 60 * MIN });
+  store.insertMessage({
+    roomId: room.id,
+    participantId: store.findParticipantByName(room.id, "tom")!.id,
+    kind: "text",
+    body: "active",
+    lang: null,
+    createdAt: NOW - 1 * MIN,
+  });
+  expect(store.heartbeat(room.id, "api")).toBeNull();
+  expect(heartbeats.checkNow(NOW)).toBe(0);
 });
 
 test("a stale agent in an active room is alarmed once per cooldown", () => {

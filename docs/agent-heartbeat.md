@@ -16,15 +16,20 @@ is the same socket the watcher uses for message delivery — no second connectio
 `author` is the bot's participant name. There is no response; the server just
 records the time.
 
-Posting a message through the normal HTTP or MCP path refreshes last-seen too,
-so an agent that is actively talking is never reported as stale — heartbeats are
-for detecting an agent that has stopped both talking and pinging.
+**A ping is also what DECLARES an author as an agent.** Only authors who have
+sent at least one ping are tracked for staleness.
+
+Posting a message refreshes last-seen for an agent that is ALREADY declared
+(has pinged), so an agent that is actively talking is never reported as stale —
+but a message alone does not declare an agent. A one-off author who posts
+without ever pinging is not tracked and never alarmed. Heartbeats are for
+detecting an agent that has stopped both talking and pinging.
 
 ## The alarm
 
 The server scans every two minutes. A bot is reported when:
 
-- it is a participant that has posted at least once in that room,
+- it is a participant that has sent at least one ping (declared itself an agent),
 - its last seen time is older than the stale window (default 10 minutes),
 - the room has had activity from someone else within that same window (so a
   quiet room never raises alarms),

@@ -47,7 +47,7 @@ export class HeartbeatService {
       alarmAuthor: this.config.alarmAuthor,
     });
     for (const agent of stale) {
-      const lastSeen = agent.lastSeenAt === 0 ? "never" : new Date(agent.lastSeenAt).toISOString();
+      const lastSeen = new Date(agent.lastSeenAt).toISOString();
       this.messages.post({
         roomId: agent.roomId,
         author: this.config.alarmAuthor,
