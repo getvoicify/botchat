@@ -62,6 +62,14 @@ export function roomRoutes(deps: {
           participants: deps.rooms.participants(req.params.id),
         }),
       ),
+      PATCH: guard(async (req: BunRequest<"/api/rooms/:id">) =>
+        Response.json(
+          deps.rooms.setHeartbeat(
+            req.params.id,
+            (await body<{ heartbeatEnabled?: boolean }>(req)).heartbeatEnabled as boolean,
+          ),
+        ),
+      ),
     },
     "/api/rooms/:id/messages": {
       GET: guard((req: BunRequest<"/api/rooms/:id/messages">) => {

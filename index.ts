@@ -1,6 +1,7 @@
 import index from "./src/web/index.html";
 import { BlobStore } from "./src/core/blobs.ts";
 import { EventBus } from "./src/core/bus.ts";
+import { HEARTBEAT_DEFAULTS, HeartbeatService } from "./src/core/heartbeats.ts";
 import { MessageService } from "./src/core/messages.ts";
 import { RoomService } from "./src/core/rooms.ts";
 import { openDatabase } from "./src/db/schema.ts";
@@ -14,6 +15,13 @@ const bus = new EventBus();
 const rooms = new RoomService(store);
 const messages = new MessageService(store, rooms, bus);
 const blobs = new BlobStore(store, process.env.BOTCHAT_BLOBS ?? "data/blobs");
+const heartbeats = new HeartbeatService(store, messages, {
+  staleMs: Number(process.env.BOTCHAT_HEARTBEAT_STALE_MS ?? HEARTBEAT_DEFAULTS.staleMs),
+  cooldownMs: Number(process.env.BOTCHAT_HEARTBEAT_COOLDOWN_MS ?? HEARTBEAT_DEFAULTS.cooldownMs),
+  intervalMs: Number(process.env.BOTCHAT_HEARTBEAT_INTERVAL_MS ?? HEARTBEAT_DEFAULTS.intervalMs),
+  alarmAuthor: process.env.BOTCHAT_HEARTBEAT_ALARM_AUTHOR ?? HEARTBEAT_DEFAULTS.alarmAuthor,
+});
+heartbeats.start();
 const mcp = createMcpHandler({ store, rooms, messages, bus, blobs });
 
 const server = Bun.serve({
@@ -40,7 +48,7 @@ const server = Bun.serve({
     });
     return upgraded ? undefined : new Response("expected a websocket", { status: 400 });
   },
-  websocket: createSocketHandlers({ messages, bus }),
+  websocket: createSocketHandlers({ messages, bus, heartbeats }),
 });
 
 console.log(`BOTCHAT_LISTENING ${server.url}`);
