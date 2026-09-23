@@ -2,6 +2,7 @@ import index from "./src/web/index.html";
 import { BlobStore } from "./src/core/blobs.ts";
 import { EventBus } from "./src/core/bus.ts";
 import { MessageService } from "./src/core/messages.ts";
+import { PresenceService } from "./src/core/presence.ts";
 import { RoomService } from "./src/core/rooms.ts";
 import { openDatabase } from "./src/db/schema.ts";
 import { Store } from "./src/db/store.ts";
@@ -14,7 +15,8 @@ const bus = new EventBus();
 const rooms = new RoomService(store);
 const messages = new MessageService(store, rooms, bus);
 const blobs = new BlobStore(store, process.env.BOTCHAT_BLOBS ?? "data/blobs");
-const mcp = createMcpHandler({ store, rooms, messages, bus, blobs });
+const presence = new PresenceService(Number(process.env.BOTCHAT_THINKING_TTL_MS ?? 60_000));
+const mcp = createMcpHandler({ store, rooms, messages, bus, blobs, presence });
 
 const server = Bun.serve({
   port: Number(process.env.PORT ?? 4000),
@@ -40,7 +42,7 @@ const server = Bun.serve({
     });
     return upgraded ? undefined : new Response("expected a websocket", { status: 400 });
   },
-  websocket: createSocketHandlers({ messages, bus }),
+  websocket: createSocketHandlers({ messages, bus, presence }),
 });
 
 console.log(`BOTCHAT_LISTENING ${server.url}`);

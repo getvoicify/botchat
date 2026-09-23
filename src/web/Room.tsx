@@ -44,6 +44,13 @@ function rememberMuted(muted: boolean) {
 
 const atBottom = (el: Element) => el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
 
+function describeThinkers(names: string[]): string {
+  if (names.length === 0) return "";
+  if (names.length === 1) return `${names[0]} is thinking…`;
+  if (names.length === 2) return `${names[0]} and ${names[1]} are thinking…`;
+  return `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]} are thinking…`;
+}
+
 function displayName(): string {
   const asked = new URLSearchParams(location.search).get("as");
   if (asked) {
@@ -97,6 +104,7 @@ export function Room({ roomId }: { roomId: string }) {
   const [detail, setDetail] = useState<RoomDetail | null>(null);
   const [inviting, setInviting] = useState(false);
   const [behind, setBehind] = useState(false);
+  const [thinkers, setThinkers] = useState<string[]>([]);
   const [muted, setMuted] = useState(readMuted);
   const [now, setNow] = useState(() => Date.now());
   const mutedNow = useRef(muted);
@@ -173,6 +181,10 @@ export function Room({ roomId }: { roomId: string }) {
       };
       socket.onmessage = (event) => {
         const frame = JSON.parse(event.data);
+        if (frame.type === "thinking") {
+          setThinkers(frame.authors);
+          return;
+        }
         if (frame.type !== "message") return;
         append(frame.message);
         if (!known.current.has(frame.message.author)) refreshRoom();
@@ -355,6 +367,11 @@ export function Room({ roomId }: { roomId: string }) {
         ) : null}
       </div>
       {connection === "closed" ? <p className="reconnecting">Reconnecting…</p> : null}
+      {thinkers.length > 0 ? (
+        <p className="thinking" data-testid="thinking">
+          {describeThinkers(thinkers)}
+        </p>
+      ) : null}
       <Composer roomId={roomId} roster={roster} me={me.current} />
     </main>
   );

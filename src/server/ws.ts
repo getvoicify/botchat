@@ -1,17 +1,23 @@
 import type { ServerWebSocket } from "bun";
 import type { EventBus } from "../core/bus.ts";
 import type { MessageService } from "../core/messages.ts";
+import type { PresenceService } from "../core/presence.ts";
 
 export type SocketData = {
   roomId: string;
   cursor: number;
   lastActivity: number;
   unsubscribe?: () => void;
+  unsubscribePresence?: () => void;
 };
 
 const BACKLOG_LIMIT = 500;
 
-export function createSocketHandlers(deps: { messages: MessageService; bus: EventBus }) {
+export function createSocketHandlers(deps: {
+  messages: MessageService;
+  bus: EventBus;
+  presence: PresenceService;
+}) {
   const idleMs = Number(process.env.BOTCHAT_WS_IDLE_MS ?? 300_000);
   const live = new Set<ServerWebSocket<SocketData>>();
 
@@ -47,6 +53,10 @@ export function createSocketHandlers(deps: { messages: MessageService; bus: Even
       }
       live.add(ws);
       ws.data.unsubscribe = deps.bus.subscribe(ws.data.roomId, () => flush(ws));
+      ws.send(JSON.stringify({ type: "thinking", authors: deps.presence.snapshot(ws.data.roomId) }));
+      ws.data.unsubscribePresence = deps.presence.subscribe(ws.data.roomId, (authors) => {
+        ws.send(JSON.stringify({ type: "thinking", authors }));
+      });
     },
     message(ws: ServerWebSocket<SocketData>) {
       ws.data.lastActivity = Date.now();
@@ -55,6 +65,8 @@ export function createSocketHandlers(deps: { messages: MessageService; bus: Even
       live.delete(ws);
       ws.data.unsubscribe?.();
       ws.data.unsubscribe = undefined;
+      ws.data.unsubscribePresence?.();
+      ws.data.unsubscribePresence = undefined;
     },
   };
 }

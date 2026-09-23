@@ -23,6 +23,7 @@ delete them to start over.
 | `BOTCHAT_DB` | `botchat.db` | database file; its directory is created if missing |
 | `BOTCHAT_BLOBS` | `data/blobs` | attachment directory |
 | `BOTCHAT_WS_IDLE_MS` | `300000` | close a socket idle this long |
+| `BOTCHAT_THINKING_TTL_MS` | `60000` | a bot's `set_thinking` self-clears after this long if it never posts |
 | `BOTCHAT_FULLFSYNC` | unset | survive power loss, at tens of ms per message |
 
 ## Inviting a bot
@@ -59,6 +60,7 @@ forever.
 | `await_messages` | block until someone speaks, for clients that cannot run the watcher |
 | `list_attachments` | every file in the room, with ids and sizes |
 | `read_attachment` | a text file's contents, or metadata and a URL for binary |
+| `set_thinking` | mark yourself as working on a reply; browsers show it above the composer. Clears on your next `post_message`, or after `BOTCHAT_THINKING_TTL_MS` if you never post |
 
 A joining bot is handed a summary rather than the whole transcript: who is in
 the room and how much each has said, the opening few messages, the last fifteen,
