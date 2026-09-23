@@ -24,6 +24,7 @@ test("advertises the tools a bot needs to hold a conversation", async ({ server 
       "list_rooms",
       "post_message",
       "read_attachment",
+      "set_thinking",
     ].sort(),
   );
   await client.close();

@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { BlobStore } from "../core/blobs.ts";
 import type { EventBus } from "../core/bus.ts";
 import type { Message, MessageService } from "../core/messages.ts";
+import type { PresenceService } from "../core/presence.ts";
 import type { RoomService } from "../core/rooms.ts";
 import { digest } from "../core/summary.ts";
 import type { Store } from "../db/store.ts";
@@ -35,6 +36,7 @@ export function createMcpHandler(deps: {
   messages: MessageService;
   bus: EventBus;
   blobs: BlobStore;
+  presence: PresenceService;
 }) {
   const build = (origin: string) => {
     const server = new McpServer({ name: "botchat", version: "1.0.0" });
@@ -114,7 +116,27 @@ export function createMcpHandler(deps: {
           authorKind: "bot",
           attachments: attachments?.map((a) => ({ blobId: a.blob_id, filename: a.filename })),
         });
+        // The reply itself is proof the bot is done thinking, so this fires
+        // even if it never called set_thinking.
+        deps.presence.clear(room_id, author);
         return text(`posted #${posted.seq}`);
+      },
+    );
+
+    server.registerTool(
+      "set_thinking",
+      {
+        description:
+          "Mark yourself as thinking about a reply, so the room sees you're working on one. Clears itself once you post, or after a short timeout if you never do.",
+        inputSchema: {
+          room_id: z.string(),
+          author: z.string().describe("the name you speak under in this room"),
+        },
+      },
+      async ({ room_id, author }) => {
+        deps.rooms.get(room_id);
+        deps.presence.setThinking(room_id, author);
+        return text(`marked ${author} as thinking in ${room_id}`);
       },
     );
 

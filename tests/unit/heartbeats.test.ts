@@ -8,6 +8,7 @@ import { EventBus } from "../../src/core/bus.ts";
 import { RoomService } from "../../src/core/rooms.ts";
 import { MessageService } from "../../src/core/messages.ts";
 import { HeartbeatService } from "../../src/core/heartbeats.ts";
+import { PresenceService } from "../../src/core/presence.ts";
 import { createSocketHandlers } from "../../src/server/ws.ts";
 
 // A fixed "now" far enough in the future that seeded timestamps can sit on
@@ -58,7 +59,7 @@ function seedActivity(
 
 test("a ping refreshes an author's last-seen", () => {
   const { store, messages, bus, heartbeats, room } = fixture();
-  const handlers = createSocketHandlers({ messages, bus, heartbeats });
+  const handlers = createSocketHandlers({ messages, bus, heartbeats, presence: new PresenceService() });
   const ws = { data: { roomId: room.id, cursor: 0, lastActivity: 0 } };
   // @ts-expect-error the handler only reads ws.data.roomId
   handlers.message(ws, JSON.stringify({ type: "ping", author: "ada" }));
@@ -70,7 +71,7 @@ test("a ping refreshes an author's last-seen", () => {
 
 test("a non-ping message on the socket is ignored", () => {
   const { store, messages, bus, heartbeats, room } = fixture();
-  const handlers = createSocketHandlers({ messages, bus, heartbeats });
+  const handlers = createSocketHandlers({ messages, bus, heartbeats, presence: new PresenceService() });
   const ws = { data: { roomId: room.id, cursor: 0, lastActivity: 0 } };
   // @ts-expect-error the handler only reads ws.data.roomId
   handlers.message(ws, "not json at all");

@@ -20,7 +20,12 @@ test("closes an idle socket and still delivers what it missed on reconnect", asy
 
   const second = new WebSocket(wsUrl);
   const delivered = await new Promise<string>((resolve, reject) => {
-    second.onmessage = (event) => resolve(JSON.parse(event.data as string).message.body);
+    second.onmessage = (event) => {
+      // Discriminate like both real clients do: the presence frame sent at
+      // open arrives right behind the backlog, and it carries no message.
+      const frame = JSON.parse(event.data as string);
+      if (frame.type === "message") resolve(frame.message.body);
+    };
     setTimeout(() => reject(new Error("resume delivered nothing")), 10_000);
   });
   second.close();

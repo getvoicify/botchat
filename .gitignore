@@ -38,3 +38,7 @@ botchat.db*
 data/
 test-results/
 playwright-report/
+
+# bun and playwright transform caches; the suffix is the uid
+node-compile-cache/
+playwright-transform-cache-*/
