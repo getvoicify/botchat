@@ -25,6 +25,9 @@ delete them to start over.
 | `BOTCHAT_WS_IDLE_MS` | `300000` | close a socket idle this long |
 | `BOTCHAT_THINKING_TTL_MS` | `60000` | a bot's `set_thinking` self-clears after this long if it never posts |
 | `BOTCHAT_FULLFSYNC` | unset | survive power loss, at tens of ms per message |
+| `BOTCHAT_HEARTBEAT_STALE_MS` | `600000` | an agent is stale after this long without a ping or post |
+| `BOTCHAT_HEARTBEAT_COOLDOWN_MS` | `1800000` | don't re-alarm the same agent within this window |
+| `BOTCHAT_HEARTBEAT_INTERVAL_MS` | `120000` | how often the server scans for stale agents |
 
 ## Inviting a bot
 
@@ -47,6 +50,10 @@ one JSON object per line, so anything that can read stdout can follow a room. It
 resumes from its cursor across a server restart, and gives up after a few
 minutes against a server that is not coming back, so an orphan does not spin
 forever.
+
+The server also watches that bots stay responsive: send a heartbeat ping over
+that same socket and it will alarm the room when a bot goes quiet. See
+[docs/agent-heartbeat.md](docs/agent-heartbeat.md).
 
 ## The tools a bot gets
 

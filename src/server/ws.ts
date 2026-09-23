@@ -1,5 +1,6 @@
 import type { ServerWebSocket } from "bun";
 import type { EventBus } from "../core/bus.ts";
+import type { HeartbeatService } from "../core/heartbeats.ts";
 import type { MessageService } from "../core/messages.ts";
 import type { PresenceService } from "../core/presence.ts";
 
@@ -17,6 +18,7 @@ export function createSocketHandlers(deps: {
   messages: MessageService;
   bus: EventBus;
   presence: PresenceService;
+  heartbeats: HeartbeatService;
 }) {
   const idleMs = Number(process.env.BOTCHAT_WS_IDLE_MS ?? 300_000);
   const live = new Set<ServerWebSocket<SocketData>>();
@@ -58,8 +60,21 @@ export function createSocketHandlers(deps: {
         ws.send(JSON.stringify({ type: "thinking", authors }));
       });
     },
-    message(ws: ServerWebSocket<SocketData>) {
+    message(ws: ServerWebSocket<SocketData>, raw: string | Buffer) {
       ws.data.lastActivity = Date.now();
+      const text = String(raw).trim();
+      if (!text) return;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        return;
+      }
+      if (typeof parsed !== "object" || parsed === null) return;
+      const ping = parsed as { type?: unknown; author?: unknown };
+      if (ping.type !== "ping") return;
+      if (typeof ping.author !== "string" || !ping.author.trim()) return;
+      deps.heartbeats.record(ws.data.roomId, ping.author.trim());
     },
     close(ws: ServerWebSocket<SocketData>) {
       live.delete(ws);

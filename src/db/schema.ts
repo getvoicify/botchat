@@ -7,7 +7,8 @@ CREATE TABLE IF NOT EXISTS rooms (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   topic TEXT,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  heartbeat_enabled INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS participants (
@@ -32,6 +33,14 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS messages_by_room ON messages (room_id, seq);
 
 CREATE INDEX IF NOT EXISTS messages_by_participant ON messages (participant_id);
+
+CREATE TABLE IF NOT EXISTS agent_heartbeats (
+  room_id TEXT NOT NULL REFERENCES rooms(id),
+  author TEXT NOT NULL,
+  last_seen_at INTEGER NOT NULL,
+  last_alarm_at INTEGER,
+  PRIMARY KEY (room_id, author)
+);
 
 CREATE TABLE IF NOT EXISTS blobs (
   id TEXT PRIMARY KEY,
@@ -73,5 +82,11 @@ export function openDatabase(path: string): Database {
   db.exec("PRAGMA recursive_triggers = ON");
   db.exec("PRAGMA busy_timeout = 5000");
   db.exec(SCHEMA_SQL);
+  // rooms predates agent heartbeats; CREATE TABLE IF NOT EXISTS cannot add a
+  // column to an existing table, so backfill it here and keep it idempotent.
+  const roomsColumns = db.query("PRAGMA table_info(rooms)").all() as { name: string }[];
+  if (!roomsColumns.some((column) => column.name === "heartbeat_enabled")) {
+    db.exec("ALTER TABLE rooms ADD COLUMN heartbeat_enabled INTEGER NOT NULL DEFAULT 1");
+  }
   return db;
 }

@@ -1,6 +1,6 @@
 import type { Database, Statement } from "bun:sqlite";
 
-export type Room = { id: string; name: string; topic: string | null; createdAt: number };
+export type Room = { id: string; name: string; topic: string | null; createdAt: number; heartbeatEnabled: boolean };
 
 export type Participant = {
   id: string;
@@ -40,7 +40,9 @@ export type Attachment = { blobId: string; filename: string; mime: string; size:
 
 export type BlobRecord = { id: string; mime: string; size: number; createdAt: number };
 
-type RoomRow = { id: string; name: string; topic: string | null; created_at: number };
+export type StaleAgent = { roomId: string; author: string; lastSeenAt: number };
+
+type RoomRow = { id: string; name: string; topic: string | null; created_at: number; heartbeat_enabled: number };
 
 type BlobRow = { id: string; mime: string; size: number; created_at: number };
 
@@ -80,6 +82,7 @@ const toRoom = (row: RoomRow): Room => ({
   name: row.name,
   topic: row.topic,
   createdAt: row.created_at,
+  heartbeatEnabled: row.heartbeat_enabled === 1,
 });
 
 const toParticipant = (row: ParticipantRow): Participant => ({
@@ -127,11 +130,18 @@ export class Store {
   #findBlob: Statement<BlobRow>;
   #insertAttachment: Statement;
   #attachmentsForMessages: Statement<AttachmentRow>;
+  #recordHeartbeat: Statement;
+  #refreshHeartbeat: Statement;
+  #recordHeartbeatAlarm: Statement;
+  #staleAgents: Statement<StaleAgent>;
+  #setRoomHeartbeat: Statement;
+  #heartbeatRow: Statement<{ lastSeenAt: number; lastAlarmAt: number | null }>;
 
   constructor(db: Database) {
     this.db = db;
     this.#insertRoom = db.prepare(
-      "INSERT INTO rooms (id, name, topic, created_at) VALUES ($id, $name, $topic, $createdAt)",
+      "INSERT INTO rooms (id, name, topic, created_at, heartbeat_enabled) " +
+        "VALUES ($id, $name, $topic, $createdAt, $heartbeatEnabled)",
     );
     // rowid breaks the tie when two rooms share a created_at millisecond.
     this.#listRooms = db.prepare("SELECT * FROM rooms ORDER BY created_at DESC, rowid DESC");
@@ -186,6 +196,41 @@ export class Store {
         "WHERE a.message_seq IN (SELECT value FROM json_each($seqs)) " +
         "ORDER BY a.message_seq, a.rowid",
     );
+    this.#recordHeartbeat = db.prepare(
+      "INSERT INTO agent_heartbeats (room_id, author, last_seen_at) " +
+        "SELECT $roomId, $author, $at " +
+        "WHERE EXISTS (SELECT 1 FROM rooms WHERE id = $roomId AND heartbeat_enabled = 1) " +
+        "ON CONFLICT(room_id, author) DO UPDATE SET last_seen_at = excluded.last_seen_at",
+    );
+    this.#refreshHeartbeat = db.prepare(
+      "UPDATE agent_heartbeats SET last_seen_at = $at " +
+        "WHERE room_id = $roomId AND author = $author " +
+        "AND EXISTS (SELECT 1 FROM rooms WHERE id = $roomId AND heartbeat_enabled = 1)",
+    );
+    this.#recordHeartbeatAlarm = db.prepare(
+      "UPDATE agent_heartbeats SET last_alarm_at = $at " +
+        "WHERE room_id = $roomId AND author = $author " +
+        "AND EXISTS (SELECT 1 FROM rooms WHERE id = $roomId AND heartbeat_enabled = 1)",
+    );
+    this.#staleAgents = db.prepare(
+      "SELECT p.room_id AS roomId, p.name AS author, h.last_seen_at AS lastSeenAt " +
+        "FROM participants p " +
+        "JOIN rooms r ON r.id = p.room_id " +
+        "JOIN agent_heartbeats h ON h.room_id = p.room_id AND h.author = p.name " +
+        "WHERE r.heartbeat_enabled = 1 " +
+        "AND p.kind = 'bot' " +
+        "AND p.name != $alarmAuthor " +
+        "AND h.last_seen_at < $staleBefore " +
+        "AND COALESCE(h.last_alarm_at, 0) < $cooldownBefore " +
+        "AND EXISTS (SELECT 1 FROM messages m2 WHERE m2.room_id = p.room_id AND m2.created_at > $recentSince)",
+    );
+    this.#setRoomHeartbeat = db.prepare(
+      "UPDATE rooms SET heartbeat_enabled = $enabled WHERE id = $roomId",
+    );
+    this.#heartbeatRow = db.prepare(
+      "SELECT last_seen_at AS lastSeenAt, last_alarm_at AS lastAlarmAt " +
+        "FROM agent_heartbeats WHERE room_id = $roomId AND author = $author",
+    );
   }
 
   insertRoom(room: Room): void {
@@ -194,6 +239,7 @@ export class Store {
       $name: room.name,
       $topic: room.topic,
       $createdAt: room.createdAt,
+      $heartbeatEnabled: room.heartbeatEnabled ? 1 : 0,
     });
   }
 
@@ -313,5 +359,42 @@ export class Store {
       else grouped.set(row.messageSeq, [attachment]);
     }
     return grouped;
+  }
+
+  recordHeartbeat(roomId: string, author: string, at: number): void {
+    this.#recordHeartbeat.run({ $roomId: roomId, $author: author, $at: at });
+  }
+
+  refreshHeartbeat(roomId: string, author: string, at: number): void {
+    this.#refreshHeartbeat.run({ $roomId: roomId, $author: author, $at: at });
+  }
+
+  recordHeartbeatAlarm(roomId: string, author: string, at: number): void {
+    this.#recordHeartbeatAlarm.run({ $roomId: roomId, $author: author, $at: at });
+  }
+
+  staleAgents(input: {
+    staleBefore: number;
+    cooldownBefore: number;
+    recentSince: number;
+    alarmAuthor: string;
+  }): StaleAgent[] {
+    return this.#staleAgents.all({
+      $staleBefore: input.staleBefore,
+      $cooldownBefore: input.cooldownBefore,
+      $recentSince: input.recentSince,
+      $alarmAuthor: input.alarmAuthor,
+    });
+  }
+
+  setRoomHeartbeat(roomId: string, enabled: boolean): void {
+    this.#setRoomHeartbeat.run({ $roomId: roomId, $enabled: enabled ? 1 : 0 });
+  }
+
+  heartbeat(roomId: string, author: string): {
+    lastSeenAt: number;
+    lastAlarmAt: number | null;
+  } | null {
+    return this.#heartbeatRow.get({ $roomId: roomId, $author: author }) ?? null;
   }
 }
