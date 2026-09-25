@@ -49,6 +49,48 @@ CREATE TABLE IF NOT EXISTS blobs (
   created_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS board_columns (
+  id TEXT PRIMARY KEY,
+  room_id TEXT NOT NULL REFERENCES rooms(id),
+  name TEXT NOT NULL,
+  position INTEGER NOT NULL,
+  created_by TEXT,
+  created_at INTEGER NOT NULL,
+  archived INTEGER NOT NULL DEFAULT 0,
+  is_default INTEGER NOT NULL DEFAULT 0,
+  UNIQUE (room_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS columns_by_room ON board_columns (room_id, position);
+
+CREATE TABLE IF NOT EXISTS tasks (
+  id TEXT PRIMARY KEY,
+  room_id TEXT NOT NULL REFERENCES rooms(id),
+  column_id TEXT NOT NULL REFERENCES board_columns(id),
+  title TEXT NOT NULL,
+  body TEXT,
+  assignee TEXT,
+  priority TEXT NOT NULL DEFAULT 'none' CHECK (priority IN ('none', 'low', 'medium', 'high', 'urgent')),
+  position INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  completed_at INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS tasks_by_room ON tasks (room_id, column_id, position);
+
+CREATE TABLE IF NOT EXISTS task_events (
+  id INTEGER PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES tasks(id),
+  room_id TEXT NOT NULL REFERENCES rooms(id),
+  kind TEXT NOT NULL CHECK (kind IN ('created', 'moved', 'assigned', 'noted', 'priority_changed', 'completed', 'reopened')),
+  author TEXT,
+  payload TEXT,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS task_events_by_task ON task_events (task_id, id);
+
 CREATE TABLE IF NOT EXISTS message_attachments (
   message_seq INTEGER NOT NULL REFERENCES messages(seq),
   blob_id TEXT NOT NULL REFERENCES blobs(id),

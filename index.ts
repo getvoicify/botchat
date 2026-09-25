@@ -1,4 +1,5 @@
 import index from "./src/web/index.html";
+import { BoardService } from "./src/core/board.ts";
 import { BlobStore } from "./src/core/blobs.ts";
 import { EventBus } from "./src/core/bus.ts";
 import { HEARTBEAT_DEFAULTS, HeartbeatService } from "./src/core/heartbeats.ts";
@@ -15,6 +16,7 @@ const bus = new EventBus();
 const rooms = new RoomService(store);
 const messages = new MessageService(store, rooms, bus);
 const blobs = new BlobStore(store, process.env.BOTCHAT_BLOBS ?? "data/blobs");
+const board = new BoardService(store);
 const heartbeats = new HeartbeatService(store, messages, {
   staleMs: Number(process.env.BOTCHAT_HEARTBEAT_STALE_MS ?? HEARTBEAT_DEFAULTS.staleMs),
   cooldownMs: Number(process.env.BOTCHAT_HEARTBEAT_COOLDOWN_MS ?? HEARTBEAT_DEFAULTS.cooldownMs),
@@ -22,7 +24,7 @@ const heartbeats = new HeartbeatService(store, messages, {
   alarmAuthor: process.env.BOTCHAT_HEARTBEAT_ALARM_AUTHOR ?? HEARTBEAT_DEFAULTS.alarmAuthor,
 });
 heartbeats.start();
-const mcp = createMcpHandler({ store, rooms, messages, bus, blobs });
+const mcp = createMcpHandler({ store, rooms, messages, bus, blobs, board });
 
 const server = Bun.serve({
   port: Number(process.env.PORT ?? 4000),
@@ -34,7 +36,7 @@ const server = Bun.serve({
     "/": index,
     "/rooms/:id": index,
     "/mcp": { GET: mcp, POST: mcp, DELETE: mcp },
-    ...roomRoutes({ rooms, messages, blobs }),
+    ...roomRoutes({ rooms, messages, blobs, board }),
   },
   fetch(req, server) {
     const url = new URL(req.url);
