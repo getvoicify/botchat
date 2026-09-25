@@ -42,7 +42,88 @@ export type BlobRecord = { id: string; mime: string; size: number; createdAt: nu
 
 export type StaleAgent = { roomId: string; author: string; lastSeenAt: number };
 
+export type Column = {
+  id: string;
+  roomId: string;
+  name: string;
+  position: number;
+  createdBy: string | null;
+  createdAt: number;
+  archived: boolean;
+  isDefault: boolean;
+};
+
+export type TaskPriority = "none" | "low" | "medium" | "high" | "urgent";
+
+export type Task = {
+  id: string;
+  roomId: string;
+  columnId: string;
+  title: string;
+  body: string | null;
+  assignee: string | null;
+  priority: TaskPriority;
+  position: number;
+  createdAt: number;
+  updatedAt: number;
+  completedAt: number | null;
+};
+
+export type TaskEventKind =
+  | "created"
+  | "moved"
+  | "assigned"
+  | "noted"
+  | "priority_changed"
+  | "completed"
+  | "reopened";
+
+export type TaskEvent = {
+  id: number;
+  taskId: string;
+  roomId: string;
+  kind: TaskEventKind;
+  author: string | null;
+  payload: string | null;
+  createdAt: number;
+};
+
 type RoomRow = { id: string; name: string; topic: string | null; created_at: number; heartbeat_enabled: number };
+
+type ColumnRow = {
+  id: string;
+  room_id: string;
+  name: string;
+  position: number;
+  created_by: string | null;
+  created_at: number;
+  archived: number;
+  is_default: number;
+};
+
+type TaskRow = {
+  id: string;
+  room_id: string;
+  column_id: string;
+  title: string;
+  body: string | null;
+  assignee: string | null;
+  priority: TaskPriority;
+  position: number;
+  created_at: number;
+  updated_at: number;
+  completed_at: number | null;
+};
+
+type TaskEventRow = {
+  id: number;
+  task_id: string;
+  room_id: string;
+  kind: TaskEventKind;
+  author: string | null;
+  payload: string | null;
+  created_at: number;
+};
 
 type BlobRow = { id: string; mime: string; size: number; created_at: number };
 
@@ -110,6 +191,41 @@ const toMessage = (row: MessageRow): Message => ({
   createdAt: row.created_at,
 });
 
+const toColumn = (row: ColumnRow): Column => ({
+  id: row.id,
+  roomId: row.room_id,
+  name: row.name,
+  position: row.position,
+  createdBy: row.created_by,
+  createdAt: row.created_at,
+  archived: row.archived === 1,
+  isDefault: row.is_default === 1,
+});
+
+const toTask = (row: TaskRow): Task => ({
+  id: row.id,
+  roomId: row.room_id,
+  columnId: row.column_id,
+  title: row.title,
+  body: row.body,
+  assignee: row.assignee,
+  priority: row.priority,
+  position: row.position,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+  completedAt: row.completed_at,
+});
+
+const toTaskEvent = (row: TaskEventRow): TaskEvent => ({
+  id: row.id,
+  taskId: row.task_id,
+  roomId: row.room_id,
+  kind: row.kind,
+  author: row.author,
+  payload: row.payload,
+  createdAt: row.created_at,
+});
+
 export class Store {
   readonly db: Database;
   #insertRoom: Statement;
@@ -136,6 +252,19 @@ export class Store {
   #staleAgents: Statement<StaleAgent>;
   #setRoomHeartbeat: Statement;
   #heartbeatRow: Statement<{ lastSeenAt: number; lastAlarmAt: number | null }>;
+  #listColumns: Statement<ColumnRow>;
+  #countColumns: Statement<{ n: number }>;
+  #insertColumn: Statement;
+  #findColumn: Statement<ColumnRow>;
+  #findColumnByName: Statement<ColumnRow>;
+  #updateColumn: Statement;
+  #insertTask: Statement;
+  #findTask: Statement<TaskRow>;
+  #updateTask: Statement;
+  #tasksByRoom: Statement<TaskRow>;
+  #nextTaskPosition: Statement<{ position: number }>;
+  #insertTaskEvent: Statement;
+  #taskEvents: Statement<TaskEventRow>;
 
   constructor(db: Database) {
     this.db = db;
@@ -230,6 +359,46 @@ export class Store {
     this.#heartbeatRow = db.prepare(
       "SELECT last_seen_at AS lastSeenAt, last_alarm_at AS lastAlarmAt " +
         "FROM agent_heartbeats WHERE room_id = $roomId AND author = $author",
+    );
+    this.#listColumns = db.prepare(
+      "SELECT * FROM board_columns WHERE room_id = $roomId ORDER BY position ASC, rowid ASC",
+    );
+    this.#countColumns = db.prepare("SELECT COUNT(*) AS n FROM board_columns WHERE room_id = $roomId");
+    this.#insertColumn = db.prepare(
+      "INSERT INTO board_columns (id, room_id, name, position, created_by, created_at, archived, is_default) " +
+        "VALUES ($id, $roomId, $name, $position, $createdBy, $createdAt, $archived, $isDefault)",
+    );
+    this.#findColumn = db.prepare("SELECT * FROM board_columns WHERE room_id = $roomId AND id = $id");
+    this.#findColumnByName = db.prepare(
+      "SELECT * FROM board_columns WHERE room_id = $roomId AND name = $name",
+    );
+    // Full-row update: the service merges current values and passes the whole column.
+    this.#updateColumn = db.prepare(
+      "UPDATE board_columns SET name = $name, position = $position, archived = $archived " +
+        "WHERE id = $id",
+    );
+    this.#insertTask = db.prepare(
+      "INSERT INTO tasks (id, room_id, column_id, title, body, assignee, priority, position, created_at, updated_at, completed_at) " +
+        "VALUES ($id, $roomId, $columnId, $title, $body, $assignee, $priority, $position, $createdAt, $updatedAt, $completedAt)",
+    );
+    this.#findTask = db.prepare("SELECT * FROM tasks WHERE id = $id");
+    this.#updateTask = db.prepare(
+      "UPDATE tasks SET column_id = $columnId, title = $title, body = $body, assignee = $assignee, " +
+        "priority = $priority, position = $position, completed_at = $completedAt, updated_at = $updatedAt " +
+        "WHERE id = $id",
+    );
+    this.#tasksByRoom = db.prepare(
+      "SELECT * FROM tasks WHERE room_id = $roomId ORDER BY column_id, position ASC, rowid ASC",
+    );
+    this.#nextTaskPosition = db.prepare(
+      "SELECT COALESCE(MAX(position) + 1, 0) AS position FROM tasks WHERE room_id = $roomId AND column_id = $columnId",
+    );
+    this.#insertTaskEvent = db.prepare(
+      "INSERT INTO task_events (task_id, room_id, kind, author, payload, created_at) " +
+        "VALUES ($taskId, $roomId, $kind, $author, $payload, $createdAt)",
+    );
+    this.#taskEvents = db.prepare(
+      "SELECT * FROM task_events WHERE task_id = $taskId ORDER BY id ASC",
     );
   }
 
@@ -396,5 +565,105 @@ export class Store {
     lastAlarmAt: number | null;
   } | null {
     return this.#heartbeatRow.get({ $roomId: roomId, $author: author }) ?? null;
+  }
+
+  listColumns(roomId: string): Column[] {
+    return this.#listColumns.all({ $roomId: roomId }).map(toColumn);
+  }
+
+  countColumns(roomId: string): number {
+    return this.#countColumns.get({ $roomId: roomId })?.n ?? 0;
+  }
+
+  insertColumn(column: Column): void {
+    this.#insertColumn.run({
+      $id: column.id,
+      $roomId: column.roomId,
+      $name: column.name,
+      $position: column.position,
+      $createdBy: column.createdBy,
+      $createdAt: column.createdAt,
+      $archived: column.archived ? 1 : 0,
+      $isDefault: column.isDefault ? 1 : 0,
+    });
+  }
+
+  findColumn(roomId: string, id: string): Column | null {
+    const row = this.#findColumn.get({ $roomId: roomId, $id: id });
+    return row ? toColumn(row) : null;
+  }
+
+  findColumnByName(roomId: string, name: string): Column | null {
+    const row = this.#findColumnByName.get({ $roomId: roomId, $name: name });
+    return row ? toColumn(row) : null;
+  }
+
+  updateColumn(column: Column): void {
+    this.#updateColumn.run({
+      $id: column.id,
+      $name: column.name,
+      $position: column.position,
+      $archived: column.archived ? 1 : 0,
+    });
+  }
+
+  insertTask(task: Task): void {
+    this.#insertTask.run({
+      $id: task.id,
+      $roomId: task.roomId,
+      $columnId: task.columnId,
+      $title: task.title,
+      $body: task.body,
+      $assignee: task.assignee,
+      $priority: task.priority,
+      $position: task.position,
+      $createdAt: task.createdAt,
+      $updatedAt: task.updatedAt,
+      $completedAt: task.completedAt,
+    });
+  }
+
+  findTask(id: string): Task | null {
+    const row = this.#findTask.get({ $id: id });
+    return row ? toTask(row) : null;
+  }
+
+  updateTask(task: Task): void {
+    this.#updateTask.run({
+      $id: task.id,
+      $columnId: task.columnId,
+      $title: task.title,
+      $body: task.body,
+      $assignee: task.assignee,
+      $priority: task.priority,
+      $position: task.position,
+      $completedAt: task.completedAt,
+      $updatedAt: task.updatedAt,
+    });
+  }
+
+  tasksByRoom(roomId: string): Task[] {
+    return this.#tasksByRoom.all({ $roomId: roomId }).map(toTask);
+  }
+
+  nextTaskPosition(roomId: string, columnId: string): number {
+    return this.#nextTaskPosition.get({ $roomId: roomId, $columnId: columnId })?.position ?? 0;
+  }
+
+  insertTaskEvent(event: TaskEvent): number {
+    return Number(
+      this.#insertTaskEvent.run({
+        $taskId: event.taskId,
+        $roomId: event.roomId,
+        $kind: event.kind,
+        $author: event.author,
+        $payload: event.payload,
+        $createdAt: event.createdAt,
+      }).lastInsertRowid,
+    );
+  }
+
+  taskEvents(taskId: string): TaskEvent[] {
+    return this.#taskEvents.all({ $taskId: taskId }).map(toTaskEvent);
   }
 }

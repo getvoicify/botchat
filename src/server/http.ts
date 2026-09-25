@@ -1,4 +1,5 @@
 import type { BunRequest } from "bun";
+import type { BoardService } from "../core/board.ts";
 import type { BlobStore } from "../core/blobs.ts";
 import { Conflict, Invalid, NotFound } from "../core/errors.ts";
 import type { MessageKind, MessageService } from "../core/messages.ts";
@@ -28,6 +29,7 @@ export function roomRoutes(deps: {
   rooms: RoomService;
   messages: MessageService;
   blobs: BlobStore;
+  board: BoardService;
 }) {
   return {
     "/api/blobs": {
@@ -98,6 +100,104 @@ export function roomRoutes(deps: {
           { status: 201 },
         ),
       ),
+    },
+    "/api/rooms/:id/board": {
+      GET: guard((req: BunRequest<"/api/rooms/:id/board">) => {
+        deps.rooms.get(req.params.id); // 404 for unknown rooms, like every room route
+        return Response.json(deps.board.board(req.params.id));
+      }),
+    },
+    "/api/rooms/:id/columns": {
+      POST: guard(async (req: BunRequest<"/api/rooms/:id/columns">) => {
+        const roomId = req.params.id;
+        deps.rooms.get(roomId);
+        const input = await body<{ name?: string; names?: string[]; author?: string }>(req);
+        const names = input.names ?? (input.name ? [input.name] : []);
+        if (names.length === 0) throw new Invalid("name or names is required");
+        const created = deps.board.defineColumns(roomId, names, input.author ?? null);
+        return Response.json(names.length === 1 ? created[0] : created, { status: 201 });
+      }),
+    },
+    "/api/rooms/:id/columns/reorder": {
+      POST: guard(async (req: BunRequest<"/api/rooms/:id/columns/reorder">) => {
+        const roomId = req.params.id;
+        deps.rooms.get(roomId);
+        const input = await body<{ ids: string[] }>(req);
+        if (!Array.isArray(input.ids)) throw new Invalid("ids array is required");
+        return Response.json(deps.board.reorderColumns(roomId, input.ids));
+      }),
+    },
+    "/api/rooms/:id/columns/:columnId": {
+      PATCH: guard(async (req: BunRequest<"/api/rooms/:id/columns/:columnId">) => {
+        const roomId = req.params.id;
+        deps.rooms.get(roomId);
+        const input = await body<{ name?: string; archived?: boolean }>(req);
+        const columnId = req.params.columnId;
+        if (input.archived === true) return Response.json(deps.board.archiveColumn(roomId, columnId));
+        if (input.name !== undefined) return Response.json(deps.board.renameColumn(roomId, columnId, input.name));
+        throw new Invalid("name or archived is required");
+      }),
+    },
+    "/api/rooms/:id/tasks": {
+      GET: guard((req: BunRequest<"/api/rooms/:id/tasks">) => {
+        const roomId = req.params.id;
+        deps.rooms.get(roomId);
+        const url = new URL(req.url);
+        return Response.json(
+          deps.board.tasks(roomId, {
+            columnId: url.searchParams.get("columnId") ?? undefined,
+            assignee: url.searchParams.get("assignee") ?? undefined,
+          }),
+        );
+      }),
+      POST: guard(async (req: BunRequest<"/api/rooms/:id/tasks">) => {
+        const input = await body<{
+          title: string;
+          body?: string | null;
+          assignee?: string | null;
+          columnId?: string | null;
+          priority?: "none" | "low" | "medium" | "high" | "urgent";
+          author?: string;
+        }>(req);
+        return Response.json(
+          deps.board.createTask(req.params.id, input, input.author ?? null),
+          { status: 201 },
+        );
+      }),
+    },
+    "/api/rooms/:id/tasks/:taskId": {
+      GET: guard((req: BunRequest<"/api/rooms/:id/tasks/:taskId">) =>
+        Response.json(deps.board.task(req.params.id, req.params.taskId)),
+      ),
+      PATCH: guard(async (req: BunRequest<"/api/rooms/:id/tasks/:taskId">) => {
+        const input = await body<{
+          title?: string;
+          body?: string | null;
+          assignee?: string | null;
+          priority?: "none" | "low" | "medium" | "high" | "urgent";
+          author?: string;
+        }>(req);
+        return Response.json(
+          deps.board.updateTask(req.params.id, req.params.taskId, input, input.author ?? null),
+        );
+      }),
+    },
+    "/api/rooms/:id/tasks/:taskId/move": {
+      POST: guard(async (req: BunRequest<"/api/rooms/:id/tasks/:taskId/move">) => {
+        const input = await body<{ columnId: string; author?: string }>(req);
+        return Response.json(
+          deps.board.moveTask(req.params.id, req.params.taskId, input.columnId, input.author ?? null),
+        );
+      }),
+    },
+    "/api/rooms/:id/tasks/:taskId/note": {
+      POST: guard(async (req: BunRequest<"/api/rooms/:id/tasks/:taskId/note">) => {
+        const input = await body<{ text: string; author?: string }>(req);
+        return Response.json(
+          deps.board.noteTask(req.params.id, req.params.taskId, input.text, input.author ?? null),
+          { status: 201 },
+        );
+      }),
     },
   };
 }
